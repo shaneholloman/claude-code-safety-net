@@ -195,6 +195,7 @@ def _format_safe_excerpt(label: str, text: str) -> str:
 
 
 def _dangerous_in_text(text: str) -> str | None:
+    original = text
     t = text.lower()
 
     # Last-resort heuristics for when proper parsing fails or when destructive commands
@@ -221,7 +222,10 @@ def _dangerous_in_text(text: str) -> str | None:
             "Force push can destroy remote history. "
             "Use --force-with-lease if necessary."
         )
-    if "git branch -D" in t and "git branch -d" not in t:
+    # Preserve case for -D vs -d (git treats these as different options).
+    if re.search(r"(?i)\bgit\s+branch\b", original) and re.search(
+        r"\s-D\b", original
+    ):
         return "git branch -D force-deletes without merge check. Use -d for safety."
     if "git stash drop" in t:
         return (
