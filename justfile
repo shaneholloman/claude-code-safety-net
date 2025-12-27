@@ -11,8 +11,8 @@ check:
     uv run mypy .
     # Run dead code detection
     uv run vulture
-    # Run tests
-    uv run pytest
+    # Run tests with coverage report
+    uv run pytest --cov=scripts --cov-report=json --cov-report=term-missing
 
 # Bump version and generate changelog
 bump:
