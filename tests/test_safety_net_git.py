@@ -14,12 +14,24 @@ class GitCheckoutTests(SafetyNetTestCase):
     def test_git_checkout_double_dash_dot_blocked(self) -> None:
         self._assert_blocked("git checkout -- .", "git checkout --")
 
+    def test_git_checkout_ref_double_dash_blocked(self) -> None:
+        self._assert_blocked(
+            "git checkout HEAD -- file.txt",
+            "git checkout <ref> -- <path>",
+        )
+
     # git checkout -b (create branch)
     def test_git_checkout_b_allowed(self) -> None:
         self._assert_allowed("git checkout -b new-branch")
 
     def test_git_checkout_orphan_allowed(self) -> None:
         self._assert_allowed("git checkout --orphan orphan-branch")
+
+    def test_git_checkout_b_attached_value_allowed(self) -> None:
+        self._assert_allowed("git checkout -bnew-branch")
+
+    def test_git_checkout_B_attached_value_allowed(self) -> None:
+        self._assert_allowed("git checkout -Bnew-branch")
 
     # git checkout <ref> <pathspec> (without "--")
     def test_git_checkout_ref_pathspec_blocked(self) -> None:
@@ -36,6 +48,76 @@ class GitCheckoutTests(SafetyNetTestCase):
 
     def test_git_checkout_branch_only_allowed(self) -> None:
         self._assert_allowed("git checkout main")
+
+    def test_git_checkout_with_attached_U_value_allowed(self) -> None:
+        self._assert_allowed("git checkout -U3 main")
+
+    def test_git_checkout_previous_branch_dash_allowed(self) -> None:
+        self._assert_allowed("git checkout -")
+
+    def test_git_checkout_detach_allowed(self) -> None:
+        self._assert_allowed("git checkout --detach main")
+
+    def test_git_checkout_recurse_submodules_on_demand_allowed(self) -> None:
+        self._assert_allowed("git checkout --recurse-submodules on-demand main")
+
+    def test_git_checkout_recurse_submodules_checkout_allowed(self) -> None:
+        self._assert_allowed("git checkout --recurse-submodules checkout main")
+
+    def test_git_checkout_recurse_submodules_without_mode_allowed(self) -> None:
+        self._assert_allowed("git checkout --recurse-submodules main")
+
+    def test_git_checkout_recurse_submodules_without_mode_ref_pathspec_blocked(
+        self,
+    ) -> None:
+        self._assert_blocked(
+            "git checkout --recurse-submodules HEAD file.txt",
+            "git checkout <ref> <path>",
+        )
+
+    def test_git_checkout_recurse_submodules_ref_pathspec_blocked(self) -> None:
+        self._assert_blocked(
+            "git checkout --recurse-submodules checkout HEAD file.txt",
+            "git checkout <ref> <path>",
+        )
+
+    def test_git_checkout_track_direct_allowed(self) -> None:
+        self._assert_allowed("git checkout --track direct main")
+
+    def test_git_checkout_track_inherit_allowed(self) -> None:
+        self._assert_allowed("git checkout --track inherit main")
+
+    def test_git_checkout_track_without_mode_ref_pathspec_blocked(self) -> None:
+        self._assert_blocked(
+            "git checkout --track main file.txt",
+            "git checkout <ref> <path>",
+        )
+
+    def test_git_checkout_unknown_long_option_does_not_consume_option_value_allowed(
+        self,
+    ) -> None:
+        self._assert_allowed("git checkout --unknown -q main")
+
+    def test_git_checkout_unknown_long_option_equals_allowed(self) -> None:
+        self._assert_allowed("git checkout --unknown=1 main")
+
+    def test_git_checkout_conflict_equals_allowed(self) -> None:
+        self._assert_allowed("git checkout --conflict=merge main")
+
+    def test_git_checkout_conflict_separate_value_allowed(self) -> None:
+        self._assert_allowed("git checkout --conflict merge main")
+
+    def test_git_checkout_unified_separate_value_allowed(self) -> None:
+        self._assert_allowed("git checkout --unified 3 main")
+
+    def test_git_checkout_unknown_long_option_consumes_value_allowed(self) -> None:
+        self._assert_allowed("git checkout --unknown main file.txt")
+
+    def test_git_checkout_q_ref_pathspec_blocked(self) -> None:
+        self._assert_blocked(
+            "git checkout -q main file.txt",
+            "git checkout <ref> <path>",
+        )
 
     def test_git_checkout_ref_pathspec_from_file_equals_blocked(self) -> None:
         self._assert_blocked(
@@ -70,6 +152,9 @@ class GitRestoreTests(SafetyNetTestCase):
     def test_git_restore_staged_dot_allowed(self) -> None:
         self._assert_allowed("git restore --staged .")
 
+    def test_git_restore_help_allowed(self) -> None:
+        self._assert_allowed("git restore --help")
+
 
 class GitResetTests(SafetyNetTestCase):
     # git reset --hard
@@ -88,9 +173,60 @@ class GitResetTests(SafetyNetTestCase):
     def test_git_reset_hard_global_options_blocked(self) -> None:
         self._assert_blocked("git -C repo reset --hard", "git reset --hard")
 
+    def test_git_reset_hard_global_option_C_attached_blocked(self) -> None:
+        self._assert_blocked("git -Crepo reset --hard", "git reset --hard")
+
     def test_git_reset_hard_global_option_git_dir_blocked(self) -> None:
         self._assert_blocked(
             "git --git-dir=repo/.git reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_git_dir_separate_blocked(self) -> None:
+        self._assert_blocked(
+            "git --git-dir repo/.git reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_work_tree_equals_blocked(self) -> None:
+        self._assert_blocked(
+            "git --work-tree=repo reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_work_tree_separate_blocked(self) -> None:
+        self._assert_blocked(
+            "git --work-tree repo reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_exec_path_separate_blocked(self) -> None:
+        self._assert_blocked(
+            "git --exec-path /tmp reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_no_pager_blocked(self) -> None:
+        self._assert_blocked(
+            "git --no-pager reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_p_no_value_blocked(self) -> None:
+        self._assert_blocked(
+            "git -p reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_c_attached_blocked(self) -> None:
+        self._assert_blocked(
+            "git -cfoo=bar reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_double_dash_stops_globals_blocked(self) -> None:
+        self._assert_blocked(
+            "git -- reset --hard",
             "git reset --hard",
         )
 
@@ -168,6 +304,21 @@ class GitPushTests(SafetyNetTestCase):
 
     def test_git_push_force_with_lease_origin_allowed(self) -> None:
         self._assert_allowed("git push --force-with-lease origin main")
+
+    def test_git_push_force_with_lease_attached_allowed(self) -> None:
+        self._assert_allowed("git push --force-with-lease=refs/heads/main")
+
+    def test_git_push_force_and_force_with_lease_blocked(self) -> None:
+        self._assert_blocked(
+            "git push --force --force-with-lease",
+            "Force push",
+        )
+
+    def test_git_push_f_and_force_with_lease_blocked(self) -> None:
+        self._assert_blocked(
+            "git push -f --force-with-lease",
+            "Force push",
+        )
 
     def test_git_push_allowed(self) -> None:
         self._assert_allowed("git push origin main")
