@@ -229,10 +229,198 @@ class EdgeCasesTests(SafetyNetTestCase):
         reason = parsed["hookSpecificOutput"]["permissionDecisionReason"]
         self.assertNotIn("abc123", reason)
 
+    def test_deny_output_redacts_authorization_bearer_token(self) -> None:
+        input_data = {
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": (
+                    'curl -H "Authorization: Bearer abc123" https://example.com '
+                    "&& git reset --hard"
+                )
+            },
+        }
+        with mock.patch("sys.stdin", io.StringIO(json.dumps(input_data))):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                result = safety_net.main()
+                output = mock_stdout.getvalue()
+
+        self.assertEqual(result, 0)
+        parsed: dict = json.loads(output)
+        reason = parsed["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertNotIn("abc123", reason)
+
+    def test_deny_output_redacts_authorization_basic_token(self) -> None:
+        input_data = {
+            "tool_name": "Bash",
+            "tool_input": {
+                "command": (
+                    "curl -H 'Authorization: Basic abc123' https://example.com "
+                    "&& git reset --hard"
+                )
+            },
+        }
+        with mock.patch("sys.stdin", io.StringIO(json.dumps(input_data))):
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as mock_stdout:
+                result = safety_net.main()
+                output = mock_stdout.getvalue()
+
+        self.assertEqual(result, 0)
+        parsed: dict = json.loads(output)
+        reason = parsed["hookSpecificOutput"]["permissionDecisionReason"]
+        self.assertNotIn("abc123", reason)
+
     def test_pipe_stderr_and_stdout_split_blocked(self) -> None:
         self._assert_blocked(
             "echo ok |& git reset --hard",
             "git reset --hard",
+        )
+
+    def test_xargs_rm_rf_blocked(self) -> None:
+        self._assert_blocked(
+            "echo / | xargs rm -rf",
+            "rm -rf",
+        )
+
+    def test_xargs_replace_I_rm_rf_blocked(self) -> None:
+        self._assert_blocked(
+            "echo / | xargs -I{} rm -rf {}",
+            "xargs",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_xargs_delimiter_option_still_blocks_child_rm(self) -> None:
+        self._assert_blocked(
+            "echo / | xargs --delimiter '\\n' rm -rf",
+            "rm -rf",
+        )
+
+    def test_xargs_dash_i_does_not_consume_child_cmd_still_blocks(self) -> None:
+        self._assert_blocked(
+            "echo / | xargs -i rm -rf",
+            "rm -rf",
+        )
+
+    def test_xargs_replace_I_bash_c_placeholder_rm_rf_blocked(self) -> None:
+        self._assert_blocked(
+            "echo / | xargs -I{} bash -c 'rm -rf {}'",
+            "xargs",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_xargs_replace_custom_token_bash_c_placeholder_rm_rf_blocked(self) -> None:
+        self._assert_blocked(
+            "echo / | xargs -I% bash -c 'rm -rf %'",
+            "xargs",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_xargs_replace_I_bash_c_script_is_input_denied(self) -> None:
+        self._assert_blocked(
+            "echo 'rm -rf /' | xargs -I{} bash -c {}",
+            "xargs",
+        )
+
+    def test_xargs_print0_rm_rf_blocked(self) -> None:
+        self._assert_blocked(
+            "find . -print0 | xargs -0 rm -rf",
+            "rm -rf",
+        )
+
+    def test_xargs_arg_file_option_still_blocks_child_rm(self) -> None:
+        self._assert_blocked(
+            "echo ok | xargs -a /tmp/paths rm -rf",
+            "rm -rf",
+        )
+
+    def test_xargs_J_consumes_value_still_blocks_child_rm(self) -> None:
+        self._assert_blocked(
+            "echo / | xargs -J {} rm -rf {}",
+            "rm -rf",
+        )
+
+    def test_xargs_rm_double_dash_prevents_dash_rf_as_option_allowed(self) -> None:
+        self._assert_allowed(
+            "echo ok | xargs rm -- -rf",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_xargs_bash_c_dynamic_denied(self) -> None:
+        self._assert_blocked(
+            "echo 'rm -rf /' | xargs bash -c",
+            "xargs",
+        )
+
+    def test_xargs_echo_allowed(self) -> None:
+        self._assert_allowed("echo ok | xargs echo")
+
+    def test_parallel_bash_c_dynamic_denied(self) -> None:
+        self._assert_blocked(
+            "parallel bash -c ::: 'rm -rf /'",
+            "parallel",
+        )
+
+    def test_parallel_bash_c_script_is_input_denied(self) -> None:
+        self._assert_blocked(
+            "echo 'rm -rf /' | parallel bash -c {}",
+            "parallel",
+        )
+
+    def test_parallel_results_option_blocks_rm_rf(self) -> None:
+        self._assert_blocked(
+            "parallel --results out rm -rf {} ::: /",
+            "rm -rf",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_parallel_stdin_mode_blocks_rm_rf(self) -> None:
+        self._assert_blocked(
+            "echo / | parallel rm -rf",
+            "rm -rf",
+        )
+
+    def test_parallel_commands_mode_blocks_rm_rf(self) -> None:
+        self._assert_blocked(
+            "parallel ::: 'rm -rf /'",
+            "rm -rf",
+        )
+
+    def test_parallel_rm_rf_with_replacement_args_analyzed(self) -> None:
+        self._assert_blocked(
+            "parallel rm -rf {} ::: /",
+            "rm -rf",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_parallel_bash_c_rm_rf_with_replacement_args_analyzed(self) -> None:
+        self._assert_blocked(
+            "parallel bash -c 'rm -rf {}' ::: /",
+            "rm -rf",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_parallel_busybox_rm_rf_with_replacement_args_analyzed(self) -> None:
+        self._assert_blocked(
+            "parallel busybox rm -rf {} ::: /",
+            "rm -rf",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_parallel_rm_rf_with_safe_replacement_allowed(self) -> None:
+        self._assert_allowed(
+            "parallel rm -rf {} ::: build",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_parallel_bash_c_rm_rf_with_safe_replacement_allowed(self) -> None:
+        self._assert_allowed(
+            "parallel bash -c 'rm -rf {}' ::: build",
+            cwd=str(self.tmpdir),
+        )
+
+    def test_parallel_busybox_rm_rf_with_safe_replacement_allowed(self) -> None:
+        self._assert_allowed(
+            "parallel busybox rm -rf {} ::: build",
+            cwd=str(self.tmpdir),
         )
 
     def test_or_operator_split_blocked(self) -> None:
@@ -358,7 +546,7 @@ class EdgeCasesTests(SafetyNetTestCase):
     def test_strict_mode_python_one_liner_denies(self) -> None:
         with mock.patch.dict(os.environ, {"SAFETY_NET_STRICT": "1"}):
             self._assert_blocked(
-                'python -c "print(\"ok\")"',
+                'python -c "print(\'ok\')"',
                 "interpreter one-liners",
             )
 
