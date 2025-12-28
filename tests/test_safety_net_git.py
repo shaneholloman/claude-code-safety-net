@@ -224,6 +224,42 @@ class GitResetTests(SafetyNetTestCase):
             "git reset --hard",
         )
 
+    def test_git_reset_hard_global_option_c_separate_blocked(self) -> None:
+        self._assert_blocked(
+            "git -c foo=bar reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_exec_path_equals_blocked(self) -> None:
+        self._assert_blocked(
+            "git --exec-path=/tmp reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_namespace_equals_blocked(self) -> None:
+        self._assert_blocked(
+            "git --namespace=ns reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_global_option_super_prefix_equals_blocked(self) -> None:
+        self._assert_blocked(
+            "git --super-prefix=/tmp reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_unknown_global_option_equals_blocked(self) -> None:
+        self._assert_blocked(
+            "git --unknown=1 reset --hard",
+            "git reset --hard",
+        )
+
+    def test_git_reset_hard_unknown_global_short_option_blocked(self) -> None:
+        self._assert_blocked(
+            "git -x reset --hard",
+            "git reset --hard",
+        )
+
     def test_git_reset_hard_double_dash_stops_globals_blocked(self) -> None:
         self._assert_blocked(
             "git -- reset --hard",
@@ -379,6 +415,12 @@ class GitStashTests(SafetyNetTestCase):
 
 class SafeCommandsTests(SafetyNetTestCase):
     # Regular safe commands
+    def test_git_only_allowed(self) -> None:
+        self._assert_allowed("git")
+
+    def test_git_help_allowed(self) -> None:
+        self._assert_allowed("git --help")
+
     def test_git_status_allowed(self) -> None:
         self._assert_allowed("git status")
 
