@@ -324,6 +324,26 @@ class GitPushTests(SafetyNetTestCase):
         self._assert_allowed("git push origin main")
 
 
+class GitWorktreeTests(SafetyNetTestCase):
+    def test_git_worktree_remove_force_blocked(self) -> None:
+        self._assert_blocked(
+            "git worktree remove --force /tmp/wt",
+            "git worktree remove --force",
+        )
+
+    def test_git_worktree_remove_f_blocked(self) -> None:
+        self._assert_blocked(
+            "git worktree remove -f /tmp/wt",
+            "git worktree remove --force",
+        )
+
+    def test_git_worktree_remove_without_force_allowed(self) -> None:
+        self._assert_allowed("git worktree remove /tmp/wt")
+
+    def test_git_worktree_remove_double_dash_allows_dash_f_path(self) -> None:
+        self._assert_allowed("git worktree remove -- -f")
+
+
 class GitBranchTests(SafetyNetTestCase):
     # git branch -D
     def test_git_branch_D_blocked(self) -> None:
