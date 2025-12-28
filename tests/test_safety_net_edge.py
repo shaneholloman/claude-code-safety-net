@@ -594,11 +594,22 @@ class EdgeCasesTests(SafetyNetTestCase):
             "git reset --hard",
         )
 
-    def test_strict_mode_python_one_liner_denies(self) -> None:
+    def test_strict_mode_python_one_liner_allowed(self) -> None:
         with mock.patch.dict(os.environ, {"SAFETY_NET_STRICT": "1"}):
+            self._assert_allowed('python -c "print(\'ok\')"')
+
+    def test_paranoid_mode_python_one_liner_denies(self) -> None:
+        with mock.patch.dict(os.environ, {"SAFETY_NET_PARANOID_INTERPRETERS": "1"}):
             self._assert_blocked(
                 'python -c "print(\'ok\')"',
-                "interpreter one-liners",
+                "SAFETY_NET_PARANOID",
+            )
+
+    def test_global_paranoid_mode_python_one_liner_denies(self) -> None:
+        with mock.patch.dict(os.environ, {"SAFETY_NET_PARANOID": "1"}):
+            self._assert_blocked(
+                'python -c "print(\'ok\')"',
+                "SAFETY_NET_PARANOID",
             )
 
     def test_strict_mode_bash_lc_without_arg_denies(self) -> None:

@@ -228,8 +228,22 @@ class RmRfCwdAwareTests(SafetyNetTestCase):
     def test_rm_rf_pwd_traversal_blocked(self) -> None:
         self._assert_blocked("rm -rf $PWD/../other", "rm -rf", cwd=str(self.tmpdir))
 
-    def test_rm_rf_strict_mode_blocks_all(self) -> None:
+    def test_rm_rf_strict_mode_allows_within_cwd(self) -> None:
         with mock.patch.dict(os.environ, {"SAFETY_NET_STRICT": "1"}):
+            self._assert_allowed("rm -rf build", cwd=str(self.tmpdir))
+
+    def test_rm_rf_paranoid_rm_blocks_within_cwd(self) -> None:
+        with mock.patch.dict(os.environ, {"SAFETY_NET_PARANOID_RM": "1"}):
             self._assert_blocked(
-                "rm -rf build", "unset SAFETY_NET_STRICT", cwd=str(self.tmpdir)
+                "rm -rf build",
+                "SAFETY_NET_PARANOID",
+                cwd=str(self.tmpdir),
+            )
+
+    def test_rm_rf_global_paranoid_blocks_within_cwd(self) -> None:
+        with mock.patch.dict(os.environ, {"SAFETY_NET_PARANOID": "1"}):
+            self._assert_blocked(
+                "rm -rf build",
+                "SAFETY_NET_PARANOID",
+                cwd=str(self.tmpdir),
             )
