@@ -7,7 +7,9 @@ from .shell import _short_opts
 
 _REASON_RM_RF = "rm -rf is destructive. List files first, then delete individually."
 _REASON_RM_RF_ROOT_HOME = "rm -rf on root or home paths is extremely dangerous."
-_STRICT_SUFFIX = " [strict mode - disable with: unset SAFETY_NET_STRICT]"
+_PARANOID_SUFFIX = (
+    " [paranoid mode - disable with: unset SAFETY_NET_PARANOID SAFETY_NET_PARANOID_RM]"
+)
 
 
 def _analyze_rm(
@@ -15,7 +17,7 @@ def _analyze_rm(
     *,
     allow_tmpdir_var: bool = True,
     cwd: str | None = None,
-    strict: bool = False,
+    paranoid: bool = False,
 ) -> str | None:
     rest = tokens[1:]
 
@@ -41,8 +43,8 @@ def _analyze_rm(
     ):
         return None
 
-    if strict:
-        return _REASON_RM_RF + _STRICT_SUFFIX
+    if paranoid:
+        return _REASON_RM_RF + _PARANOID_SUFFIX
 
     if cwd and targets:
         home = os.environ.get("HOME")
