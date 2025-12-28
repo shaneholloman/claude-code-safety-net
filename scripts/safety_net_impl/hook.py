@@ -22,6 +22,11 @@ _MAX_RECURSION_DEPTH = 5
 
 _STRICT_SUFFIX = " [strict mode - disable with: unset SAFETY_NET_STRICT]"
 
+_PARANOID_INTERPRETERS_SUFFIX = (
+    " [paranoid mode - disable with: unset SAFETY_NET_PARANOID "
+    "SAFETY_NET_PARANOID_INTERPRETERS]"
+)
+
 _REASON_FIND_DELETE = (
     "find -delete permanently deletes matched files. Use -print first."
 )
@@ -112,9 +117,31 @@ def _find_has_delete(args: list[str]) -> bool:
     return False
 
 
-def _strict_mode() -> bool:
-    val = (getenv("SAFETY_NET_STRICT") or "").strip().lower()
+def _env_truthy(name: str) -> bool:
+    val = (getenv(name) or "").strip().lower()
     return val in {"1", "true", "yes", "on"}
+
+
+def _strict_mode() -> bool:
+    """Return True if strict mode is enabled.
+
+    Strict mode is intended to be minimally disruptive: it denies only when the
+    hook input/command cannot be safely analyzed.
+    """
+
+    return _env_truthy("SAFETY_NET_STRICT")
+
+
+def _paranoid_mode() -> bool:
+    return _env_truthy("SAFETY_NET_PARANOID")
+
+
+def _paranoid_rm_mode() -> bool:
+    return _paranoid_mode() or _env_truthy("SAFETY_NET_PARANOID_RM")
+
+
+def _paranoid_interpreters_mode() -> bool:
+    return _paranoid_mode() or _env_truthy("SAFETY_NET_PARANOID_INTERPRETERS")
 
 
 def _normalize_cmd_token(token: str) -> str:
@@ -569,6 +596,8 @@ def _analyze_segment(
     depth: int,
     cwd: str | None,
     strict: bool,
+    paranoid_rm: bool,
+    paranoid_interpreters: bool,
 ) -> tuple[str, str] | None:
     tokens = _shlex_split(segment)
     if tokens is None:
@@ -596,6 +625,8 @@ def _analyze_segment(
                 depth=depth + 1,
                 cwd=cwd,
                 strict=strict,
+                paranoid_rm=paranoid_rm,
+                paranoid_interpreters=paranoid_interpreters,
             )
             if analyzed:
                 return analyzed
@@ -609,10 +640,11 @@ def _analyze_segment(
             reason = _dangerous_in_text(code) or _dangerous_find_delete_in_text(code)
             if reason:
                 return segment, reason
-            if strict:
+            if paranoid_interpreters:
                 return (
                     segment,
-                    "Cannot safely analyze interpreter one-liners." + _STRICT_SUFFIX,
+                    "Cannot safely analyze interpreter one-liners."
+                    + _PARANOID_INTERPRETERS_SUFFIX,
                 )
 
     allow_tmpdir_var = not re.search(r"\bTMPDIR=", segment)
@@ -661,6 +693,8 @@ def _analyze_segment(
                     depth=depth + 1,
                     cwd=cwd,
                     strict=strict,
+                    paranoid_rm=paranoid_rm,
+                    paranoid_interpreters=paranoid_interpreters,
                 )
                 if analyzed:
                     return analyzed
@@ -677,7 +711,7 @@ def _analyze_segment(
                     ["rm", *child[2:]],
                     allow_tmpdir_var=allow_tmpdir_var,
                     cwd=cwd,
-                    strict=strict,
+                    paranoid=paranoid_rm,
                 )
                 return (segment, reason) if reason else None
             if applet == "find":
@@ -692,7 +726,7 @@ def _analyze_segment(
                 ["rm", *child[1:]],
                 allow_tmpdir_var=allow_tmpdir_var,
                 cwd=cwd,
-                strict=strict,
+                paranoid=paranoid_rm,
             )
             return (segment, reason) if reason else None
         if child_head == "find":
@@ -720,6 +754,8 @@ def _analyze_segment(
                         depth=depth + 1,
                         cwd=cwd,
                         strict=strict,
+                        paranoid_rm=paranoid_rm,
+                        paranoid_interpreters=paranoid_interpreters,
                     )
                     if analyzed:
                         return analyzed
@@ -756,6 +792,8 @@ def _analyze_segment(
                                 depth=depth + 1,
                                 cwd=cwd,
                                 strict=strict,
+                                paranoid_rm=paranoid_rm,
+                                paranoid_interpreters=paranoid_interpreters,
                             )
                             if analyzed:
                                 return analyzed
@@ -767,6 +805,8 @@ def _analyze_segment(
                     depth=depth + 1,
                     cwd=cwd,
                     strict=strict,
+                    paranoid_rm=paranoid_rm,
+                    paranoid_interpreters=paranoid_interpreters,
                 )
                 if analyzed:
                     return analyzed
@@ -804,7 +844,7 @@ def _analyze_segment(
                         rm_tokens,
                         allow_tmpdir_var=allow_tmpdir_var,
                         cwd=cwd,
-                        strict=strict,
+                        paranoid=paranoid_rm,
                     )
                     if reason:
                         return segment, reason
@@ -835,7 +875,7 @@ def _analyze_segment(
                     ["rm", *rm_tokens[1:]],
                     allow_tmpdir_var=allow_tmpdir_var,
                     cwd=cwd,
-                    strict=strict,
+                    paranoid=paranoid_rm,
                 )
                 if reason:
                     return segment, reason
@@ -853,7 +893,7 @@ def _analyze_segment(
                 ["rm", *tokens[2:]],
                 allow_tmpdir_var=allow_tmpdir_var,
                 cwd=cwd,
-                strict=strict,
+                paranoid=paranoid_rm,
             )
             return (segment, reason) if reason else None
         if applet == "find":
@@ -868,7 +908,7 @@ def _analyze_segment(
             ["rm", *tokens[1:]],
             allow_tmpdir_var=allow_tmpdir_var,
             cwd=cwd,
-            strict=strict,
+            paranoid=paranoid_rm,
         )
         return (segment, reason) if reason else None
 
@@ -884,7 +924,7 @@ def _analyze_segment(
                 ["rm", *tokens[i + 1 :]],
                 allow_tmpdir_var=allow_tmpdir_var,
                 cwd=cwd,
-                strict=strict,
+                paranoid=paranoid_rm,
             )
             if reason:
                 return segment, reason
@@ -906,6 +946,8 @@ def _analyze_command(
     depth: int,
     cwd: str | None,
     strict: bool,
+    paranoid_rm: bool,
+    paranoid_interpreters: bool,
 ) -> tuple[str, str] | None:
     effective_cwd = cwd
     for segment in _split_shell_commands(command):
@@ -914,6 +956,8 @@ def _analyze_command(
             depth=depth,
             cwd=effective_cwd,
             strict=strict,
+            paranoid_rm=paranoid_rm,
+            paranoid_interpreters=paranoid_interpreters,
         )
         if analyzed:
             return analyzed
@@ -951,6 +995,8 @@ def _segment_changes_cwd(segment: str) -> bool:
 
 def main() -> int:
     strict = _strict_mode()
+    paranoid_rm = _paranoid_rm_mode()
+    paranoid_interpreters = _paranoid_interpreters_mode()
     try:
         input_data = json.load(sys.stdin)
     except json.JSONDecodeError:
@@ -1023,7 +1069,14 @@ def main() -> int:
     if cwd == "":
         cwd = None
 
-    analyzed = _analyze_command(command, depth=0, cwd=cwd, strict=strict)
+    analyzed = _analyze_command(
+        command,
+        depth=0,
+        cwd=cwd,
+        strict=strict,
+        paranoid_rm=paranoid_rm,
+        paranoid_interpreters=paranoid_interpreters,
+    )
     if analyzed:
         segment, reason = analyzed
         output = {
