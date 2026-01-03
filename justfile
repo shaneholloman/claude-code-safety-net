@@ -18,10 +18,11 @@ check:
 bump:
     @test "$(git branch --show-current)" = "main" || (echo "Error: Must be on main branch to release" && exit 1)
     uv run cz bump --no-verify
-    uv sync
-    git add uv.lock
-    git commit --amend --no-edit --no-verify
-    @# Move tag to amended commit (cz bump tagged the pre-amend commit)
-    git tag -f $(git describe --tags --abbrev=0)
-    git push -u origin HEAD --follow-tags
-    gh release create $(git describe --tags --abbrev=0) --notes "$(uv run cz changelog $(git describe --tags --abbrev=0) --dry-run)"
+    @# Capture tag immediately after cz bump (before amend orphans it)
+    @TAG=$$(git describe --tags --abbrev=0) && \
+        uv sync && \
+        git add uv.lock && \
+        git commit --amend --no-edit --no-verify && \
+        git tag -f $$TAG && \
+        git push -u origin HEAD --follow-tags && \
+        gh release create $$TAG --notes "$$(uv run cz changelog $$TAG --dry-run)"
