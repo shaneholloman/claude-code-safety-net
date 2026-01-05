@@ -32,6 +32,14 @@ export interface ValidationResult {
 	ruleNames: Set<string>;
 }
 
+/** Result of command analysis */
+export interface AnalyzeResult {
+	/** The reason the command was blocked */
+	reason: string;
+	/** The specific segment that triggered the block */
+	segment: string;
+}
+
 /** Claude Code hook input format */
 export interface HookInput {
 	hook_event_name: string;
