@@ -1,36 +1,14 @@
 # --- Project Specific ---
 .cursor/
 .claude/
+.opencode/
 log*
 plan-*.md
 *-plan-*.md
 .safety-net.json
 
-# --- Python ---
-__pycache__/
-*.py[cod]
-*$py.class
-
 # --- Node.js ---
 node_modules/
 
-# --- Tools & Linters ---
-.ruff_cache/
-.pytest_cache/
-.mypy_cache/
-
-# --- Coverage ---
-.coverage
-coverage.json
-htmlcov/
-
 # --- Build Artifacts ---
-*.egg-info/
 dist/
-build/
-
-# --- Virtual Environments ---
-.venv/
-env/
-venv/
-ENV/
