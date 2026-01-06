@@ -140,7 +140,7 @@ jobs:
           if [ -n "$EXISTING_DRAFT" ]; then
             echo "Updating existing draft release..."
             gh release edit next \
-              --title "Upcoming Changes 🍿" \
+              --title "Upcoming Changes 🛡️" \
               --notes-file - \
               --draft <<'EOF'
           ${{ steps.notes.outputs.notes }}
@@ -148,7 +148,7 @@ jobs:
           else
             echo "Creating new draft release..."
             gh release create next \
-              --title "Upcoming Changes 🍿" \
+              --title "Upcoming Changes 🛡️" \
               --notes-file - \
               --draft \
               --target ${{ github.sha }} <<'EOF'
