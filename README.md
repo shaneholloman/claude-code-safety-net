@@ -3,6 +3,7 @@
 [![CI](https://github.com/kenryu42/claude-code-safety-net/actions/workflows/ci.yml/badge.svg)](https://github.com/kenryu42/claude-code-safety-net/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/github/v/tag/kenryu42/claude-code-safety-net?label=version&color=blue)](https://github.com/kenryu42/claude-code-safety-net)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-orange)](https://platform.claude.com/docs/en/agent-sdk/plugins)
+[![Claude Code](https://img.shields.io/badge/OpenCode-Plugin-black)](https://opencode.ai/docs/plugins/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A Claude Code plugin that acts as a safety net, catching destructive git and filesystem commands before they execute.
@@ -12,6 +13,8 @@ A Claude Code plugin that acts as a safety net, catching destructive git and fil
 - [Why This Exists](#why-this-exists)
 - [Why Hooks Instead of settings.json?](#why-hooks-instead-of-settingsjson)
 - [Quick Start](#quick-start)
+  - [Claude Code Installation](#claude-code-installation)
+  - [OpenCode Installation](#opencode-installation)
 - [Commands Blocked](#commands-blocked)
 - [Commands Allowed](#commands-allowed)
 - [What Happens When Blocked](#what-happens-when-blocked)
@@ -54,7 +57,7 @@ This hook provides **semantic command analysis**: it parses arguments, understan
 
 ## Quick Start
 
-### Installation
+### Claude Code Installation
 
 ```bash
 /plugin marketplace add kenryu42/cc-marketplace
@@ -64,9 +67,31 @@ This hook provides **semantic command analysis**: it parses arguments, understan
 > [!NOTE]
 > After installing the plugin, you need to restart your Claude Code for it to take effect.
 
-### Auto-Update
+### Claude Code Auto-Update
 
 1. Run `/plugin` → Select `Marketplaces` → Choose `cc-marketplace` → Enable auto-update
+
+---
+
+### OpenCode Installation
+
+**Option A: Let an LLM do it**
+
+Paste this into any LLM agent (Claude Code, OpenCode, Cursor, etc.):
+
+```
+Install the cc-safety-net plugin in `~/.config/opencode/opencode.json` (or `.jsonc`) according to the schema at: https://opencode.ai/config.json
+```
+
+**Option B: Manual setup**
+
+**Add the plugin to your config** `~/.config/opencode/opencode.json` (or `.jsonc`):
+
+```json
+{
+  "plugin": ["cc-safety-net"]
+}
+```
 
 ## Commands Blocked
 
