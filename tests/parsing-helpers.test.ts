@@ -62,6 +62,22 @@ describe("shell parsing helpers", () => {
 				["echo", "`date`"],
 			]);
 		});
+
+		test("extracts $() substitution segments split on operators", () => {
+			expect(splitShellCommands("echo $(rm -rf /tmp/x && echo ok)")).toEqual([
+				["echo"],
+				["rm", "-rf", "/tmp/x"],
+				["echo", "ok"],
+			]);
+		});
+
+		test("extracts multiple backtick substitutions from one token", () => {
+			expect(splitShellCommands("echo `a`:`b`")).toEqual([
+				["a"],
+				["b"],
+				["echo", "`a`:`b`"],
+			]);
+		});
 	});
 
 	describe("stripWrappersWithInfo", () => {
@@ -100,6 +116,30 @@ describe("shell parsing helpers", () => {
 			const result = stripWrappersWithInfo(tokens);
 			expect(result.tokens).toEqual(["rm", "-rf"]);
 			expect(result.envAssignments.get("FOO")).toBe("bar");
+		});
+
+		test("strips nested wrappers across iterations and preserves env assignments", () => {
+			const result = stripWrappersWithInfo([
+				"sudo",
+				"env",
+				"FOO=1",
+				"sudo",
+				"command",
+				"--",
+				"rm",
+				"-rf",
+				"/tmp/a",
+			]);
+			expect(result.tokens).toEqual(["rm", "-rf", "/tmp/a"]);
+			expect(result.envAssignments.get("FOO")).toBe("1");
+		});
+
+		test("drops leading tokens containing '=' that are not NAME=value assignments", () => {
+			// Intentionally conservative: only strict NAME=value is treated as an env assignment.
+			// Shell-legal forms like NAME+=value are dropped to reach the real command head.
+			const result = stripWrappersWithInfo(["FOO+=bar", "rm", "-rf"]);
+			expect(result.tokens).toEqual(["rm", "-rf"]);
+			expect(result.envAssignments.get("FOO")).toBeUndefined();
 		});
 	});
 });
