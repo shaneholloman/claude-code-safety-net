@@ -42,6 +42,21 @@ export type InternalOptions = AnalyzeOptions & {
 	analyzeNested: (command: string) => string | null;
 };
 
+function deriveCwdContext(
+	options: Pick<InternalOptions, "cwd" | "effectiveCwd">,
+): {
+	cwdUnknown: boolean;
+	cwdForRm: string | undefined;
+	originalCwd: string | undefined;
+} {
+	const cwdUnknown = options.effectiveCwd === null;
+	const cwdForRm = cwdUnknown
+		? undefined
+		: (options.effectiveCwd ?? options.cwd);
+	const originalCwd = cwdUnknown ? undefined : options.cwd;
+	return { cwdUnknown, cwdForRm, originalCwd };
+}
+
 export function analyzeSegment(
 	tokens: string[],
 	depth: number,
@@ -72,6 +87,8 @@ export function analyzeSegment(
 
 	const normalizedHead = normalizeCommandToken(head);
 	const basename = getBasename(head);
+	const { cwdForRm, originalCwd } = deriveCwdContext(options);
+	const allowTmpdirVar = !isTmpdirOverriddenToNonTemp(envAssignments);
 
 	if (SHELL_WRAPPERS.has(normalizedHead)) {
 		const dashCArg = extractDashCArg(stripped);
@@ -116,17 +133,11 @@ export function analyzeSegment(
 	}
 
 	if (isRm) {
-		const cwdUnknown = options.effectiveCwd === null;
-		const cwdForRm = cwdUnknown
-			? undefined
-			: (options.effectiveCwd ?? options.cwd);
-		const originalCwd = cwdUnknown ? undefined : options.cwd;
 		if (cwdForRm && isHomeDirectory(cwdForRm)) {
 			if (hasRecursiveForceFlags(stripped)) {
 				return REASON_RM_HOME_CWD;
 			}
 		}
-		const allowTmpdirVar = !isTmpdirOverriddenToNonTemp(envAssignments);
 		const rmResult = analyzeRm(stripped, {
 			cwd: cwdForRm,
 			originalCwd,
@@ -146,12 +157,6 @@ export function analyzeSegment(
 	}
 
 	if (isXargs) {
-		const cwdUnknown = options.effectiveCwd === null;
-		const cwdForRm = cwdUnknown
-			? undefined
-			: (options.effectiveCwd ?? options.cwd);
-		const originalCwd = cwdUnknown ? undefined : options.cwd;
-		const allowTmpdirVar = !isTmpdirOverriddenToNonTemp(envAssignments);
 		const xargsResult = analyzeXargs(stripped, {
 			cwd: cwdForRm,
 			originalCwd,
@@ -164,12 +169,6 @@ export function analyzeSegment(
 	}
 
 	if (isParallel) {
-		const cwdUnknown = options.effectiveCwd === null;
-		const cwdForRm = cwdUnknown
-			? undefined
-			: (options.effectiveCwd ?? options.cwd);
-		const originalCwd = cwdUnknown ? undefined : options.cwd;
-		const allowTmpdirVar = !isTmpdirOverriddenToNonTemp(envAssignments);
 		const parallelResult = analyzeParallel(stripped, {
 			cwd: cwdForRm,
 			originalCwd,
@@ -197,12 +196,6 @@ export function analyzeSegment(
 				const cmd = normalizeCommandToken(token);
 				if (cmd === "rm") {
 					const rmTokens = ["rm", ...stripped.slice(i + 1)];
-					const cwdUnknown = options.effectiveCwd === null;
-					const cwdForRm = cwdUnknown
-						? undefined
-						: (options.effectiveCwd ?? options.cwd);
-					const originalCwd = cwdUnknown ? undefined : options.cwd;
-					const allowTmpdirVar = !isTmpdirOverriddenToNonTemp(envAssignments);
 					const reason = analyzeRm(rmTokens, {
 						cwd: cwdForRm,
 						originalCwd,
