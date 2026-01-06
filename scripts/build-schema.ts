@@ -39,7 +39,10 @@ const CustomRuleSchema = z
 	.describe("A custom rule that blocks specific command patterns");
 
 const ConfigSchema = z.strictObject({
-	$schema: z.string().optional().describe("JSON Schema reference for IDE support"),
+	$schema: z
+		.string()
+		.optional()
+		.describe("JSON Schema reference for IDE support"),
 	version: z.literal(1).describe("Schema version (must be 1)"),
 	rules: z
 		.array(CustomRuleSchema)
@@ -63,7 +66,10 @@ async function main(): Promise<void> {
 		...jsonSchema,
 	};
 
-	await Bun.write(SCHEMA_OUTPUT_PATH, `${JSON.stringify(finalSchema, null, 2)}\n`);
+	await Bun.write(
+		SCHEMA_OUTPUT_PATH,
+		`${JSON.stringify(finalSchema, null, 2)}\n`,
+	);
 
 	console.log(`✓ JSON Schema generated: ${SCHEMA_OUTPUT_PATH}`);
 }
