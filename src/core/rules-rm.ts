@@ -2,6 +2,8 @@ import { realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { normalize, resolve } from "node:path";
 
+import { hasRecursiveForceFlags } from "./analyze/rm-flags.ts";
+
 const REASON_RM_RF =
 	"rm -rf outside cwd is blocked. Use explicit paths within the current directory, or delete manually.";
 const REASON_RM_RF_ROOT_HOME =
@@ -15,6 +17,21 @@ export interface AnalyzeRmOptions {
 	tmpdirOverridden?: boolean;
 }
 
+interface RmContext {
+	readonly anchoredCwd: string | null;
+	readonly resolvedCwd: string | null;
+	readonly paranoid: boolean;
+	readonly trustTmpdirVar: boolean;
+	readonly homeDir: string;
+}
+
+type TargetClassification =
+	| { kind: "root_or_home_target" }
+	| { kind: "cwd_self_target" }
+	| { kind: "temp_target" }
+	| { kind: "within_anchored_cwd" }
+	| { kind: "outside_anchored_cwd" };
+
 export function analyzeRm(
 	tokens: string[],
 	options: AnalyzeRmOptions = {},
@@ -26,79 +43,35 @@ export function analyzeRm(
 		allowTmpdirVar = true,
 		tmpdirOverridden = false,
 	} = options;
-	const checkCwd = originalCwd ?? cwd;
-	const effectiveCwd = cwd;
+	const anchoredCwd = originalCwd ?? cwd ?? null;
+	const resolvedCwd = cwd ?? null;
+	const trustTmpdirVar = allowTmpdirVar && !tmpdirOverridden;
+	const ctx: RmContext = {
+		anchoredCwd,
+		resolvedCwd,
+		paranoid,
+		trustTmpdirVar,
+		homeDir: getHomeDirForRmPolicy(),
+	};
 
-	if (!hasRecursiveForce(tokens)) {
+	if (!hasRecursiveForceFlags(tokens)) {
 		return null;
 	}
 
-	const targets = extractRmTargets(tokens);
+	const targets = extractTargets(tokens);
 
 	for (const target of targets) {
-		if (isRootOrHomePath(target)) {
-			return REASON_RM_RF_ROOT_HOME;
+		const classification = classifyTarget(target, ctx);
+		const reason = reasonForClassification(classification, ctx);
+		if (reason) {
+			return reason;
 		}
-
-		if (checkCwd) {
-			if (isCwdItself(target, checkCwd)) {
-				return REASON_RM_RF;
-			}
-		}
-
-		if (isTempPath(target, allowTmpdirVar && !tmpdirOverridden)) {
-			continue;
-		}
-
-		if (checkCwd) {
-			if (isCwdHome(checkCwd)) {
-				return REASON_RM_RF_ROOT_HOME;
-			}
-
-			if (isPathWithinCwd(target, checkCwd, effectiveCwd)) {
-				if (paranoid) {
-					return `${REASON_RM_RF} (SAFETY_NET_PARANOID_RM enabled)`;
-				}
-				continue;
-			}
-		}
-
-		return REASON_RM_RF;
 	}
 
 	return null;
 }
 
-function hasRecursiveForce(tokens: string[]): boolean {
-	let hasRecursive = false;
-	let hasForce = false;
-	let pastDoubleDash = false;
-
-	for (const token of tokens) {
-		if (token === "--") {
-			pastDoubleDash = true;
-			continue;
-		}
-		if (pastDoubleDash) continue;
-
-		if (token === "-r" || token === "-R" || token === "--recursive") {
-			hasRecursive = true;
-		} else if (token === "-f" || token === "--force") {
-			hasForce = true;
-		} else if (token.startsWith("-") && !token.startsWith("--")) {
-			if (token.includes("r") || token.includes("R")) {
-				hasRecursive = true;
-			}
-			if (token.includes("f")) {
-				hasForce = true;
-			}
-		}
-	}
-
-	return hasRecursive && hasForce;
-}
-
-function extractRmTargets(tokens: string[]): string[] {
+function extractTargets(tokens: readonly string[]): string[] {
 	const targets: string[] = [];
 	let pastDoubleDash = false;
 
@@ -124,7 +97,59 @@ function extractRmTargets(tokens: string[]): string[] {
 	return targets;
 }
 
-function isRootOrHomePath(path: string): boolean {
+function classifyTarget(target: string, ctx: RmContext): TargetClassification {
+	if (isDangerousRootOrHomeTarget(target)) {
+		return { kind: "root_or_home_target" };
+	}
+
+	const anchoredCwd = ctx.anchoredCwd;
+	if (anchoredCwd) {
+		if (isCwdSelfTarget(target, anchoredCwd)) {
+			return { kind: "cwd_self_target" };
+		}
+	}
+
+	if (isTempTarget(target, ctx.trustTmpdirVar)) {
+		return { kind: "temp_target" };
+	}
+
+	if (anchoredCwd) {
+		if (isCwdHomeForRmPolicy(anchoredCwd, ctx.homeDir)) {
+			return { kind: "root_or_home_target" };
+		}
+
+		if (
+			isTargetWithinCwd(target, anchoredCwd, ctx.resolvedCwd ?? anchoredCwd)
+		) {
+			return { kind: "within_anchored_cwd" };
+		}
+	}
+
+	return { kind: "outside_anchored_cwd" };
+}
+
+function reasonForClassification(
+	classification: TargetClassification,
+	ctx: RmContext,
+): string | null {
+	switch (classification.kind) {
+		case "root_or_home_target":
+			return REASON_RM_RF_ROOT_HOME;
+		case "cwd_self_target":
+			return REASON_RM_RF;
+		case "temp_target":
+			return null;
+		case "within_anchored_cwd":
+			if (ctx.paranoid) {
+				return `${REASON_RM_RF} (SAFETY_NET_PARANOID_RM enabled)`;
+			}
+			return null;
+		case "outside_anchored_cwd":
+			return REASON_RM_RF;
+	}
+}
+
+function isDangerousRootOrHomeTarget(path: string): boolean {
 	const normalized = path.trim();
 
 	if (normalized === "/" || normalized === "/*") {
@@ -160,7 +185,7 @@ function isRootOrHomePath(path: string): boolean {
 	return false;
 }
 
-function isTempPath(path: string, allowTmpdirVar: boolean): boolean {
+function isTempTarget(path: string, allowTmpdirVar: boolean): boolean {
 	const normalized = path.trim();
 
 	if (normalized.includes("..")) {
@@ -195,18 +220,21 @@ function isTempPath(path: string, allowTmpdirVar: boolean): boolean {
 	return false;
 }
 
-function isCwdHome(cwd: string): boolean {
-	const home = process.env.HOME || homedir();
+function getHomeDirForRmPolicy(): string {
+	return process.env.HOME ?? homedir();
+}
+
+function isCwdHomeForRmPolicy(cwd: string, homeDir: string): boolean {
 	try {
 		const normalizedCwd = normalize(cwd);
-		const normalizedHome = normalize(home);
+		const normalizedHome = normalize(homeDir);
 		return normalizedCwd === normalizedHome;
 	} catch {
 		return false;
 	}
 }
 
-function isCwdItself(target: string, cwd: string): boolean {
+function isCwdSelfTarget(target: string, cwd: string): boolean {
 	if (target === "." || target === "./") {
 		return true;
 	}
@@ -217,6 +245,8 @@ function isCwdItself(target: string, cwd: string): boolean {
 		const realResolved = realpathSync(resolved);
 		return realResolved === realCwd;
 	} catch {
+		// realpathSync throws if the path doesn't exist; fall back to a
+		// normalize/resolve based comparison.
 		try {
 			const resolved = resolve(cwd, target);
 			const normalizedCwd = normalize(cwd);
@@ -227,7 +257,7 @@ function isCwdItself(target: string, cwd: string): boolean {
 	}
 }
 
-function isPathWithinCwd(
+function isTargetWithinCwd(
 	target: string,
 	originalCwd: string,
 	effectiveCwd?: string,
@@ -284,8 +314,12 @@ function isPathWithinCwd(
 }
 
 export function isHomeDirectory(cwd: string): boolean {
-	const home = homedir();
-	const normalizedCwd = normalize(cwd);
-	const normalizedHome = normalize(home);
-	return normalizedCwd === normalizedHome;
+	const home = process.env.HOME ?? homedir();
+	try {
+		const normalizedCwd = normalize(cwd);
+		const normalizedHome = normalize(home);
+		return normalizedCwd === normalizedHome;
+	} catch {
+		return false;
+	}
 }

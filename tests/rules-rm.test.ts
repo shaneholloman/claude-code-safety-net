@@ -399,6 +399,10 @@ describe("rm -rf cwd-aware", () => {
 });
 
 describe("analyzeRm (unit)", () => {
+	test("does not treat flags after -- as rm -rf", () => {
+		expect(analyzeRm(["rm", "--", "-rf", "/"], { cwd: "/tmp" })).toBeNull();
+	});
+
 	test("blocks $HOME targets", () => {
 		expect(analyzeRm(["rm", "-rf", "$HOME/*"], { cwd: "/tmp" })).toContain(
 			"extremely dangerous",
