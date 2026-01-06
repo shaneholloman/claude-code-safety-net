@@ -1,7 +1,7 @@
 {
 	"name": "safety-net",
 	"version": "0.3.2",
-	"description": "Block destructive git and filesystem commands in Claude Code",
+	"description": "Block destructive git and filesystem commands before execution",
 	"author": {
 		"name": "J Liew",
 		"email": "jliew@420024lab.com"
