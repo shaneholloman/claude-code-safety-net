@@ -1,3 +1,5 @@
+import { extractShortOpts, getBasename } from "./shell.ts";
+
 const REASON_CHECKOUT_DOUBLE_DASH =
 	"git checkout -- discards uncommitted changes permanently. Use 'git stash' first.";
 const REASON_CHECKOUT_REF_PATH =
@@ -37,7 +39,59 @@ const GIT_GLOBAL_OPTS_WITH_VALUE = new Set([
 	"--config-env",
 ]);
 
-export function analyzeGit(tokens: string[]): string | null {
+const CHECKOUT_OPTS_WITH_VALUE = new Set([
+	"-b",
+	"-B",
+	"--orphan",
+	"--conflict",
+	"--pathspec-from-file",
+	"--unified",
+]);
+
+const CHECKOUT_OPTS_WITH_OPTIONAL_VALUE = new Set([
+	"--recurse-submodules",
+	"--track",
+	"-t",
+]);
+
+const CHECKOUT_KNOWN_OPTS_NO_VALUE = new Set([
+	"-q",
+	"--quiet",
+	"-f",
+	"--force",
+	"-d",
+	"--detach",
+	"-m",
+	"--merge",
+	"-p",
+	"--patch",
+	"--ours",
+	"--theirs",
+	"--no-track",
+	"--overwrite-ignore",
+	"--no-overwrite-ignore",
+	"--ignore-other-worktrees",
+	"--progress",
+	"--no-progress",
+]);
+
+function splitAtDoubleDash(tokens: readonly string[]): {
+	index: number;
+	before: readonly string[];
+	after: readonly string[];
+} {
+	const index = tokens.indexOf("--");
+	if (index === -1) {
+		return { index: -1, before: tokens, after: [] };
+	}
+	return {
+		index,
+		before: tokens.slice(0, index),
+		after: tokens.slice(index + 1),
+	};
+}
+
+export function analyzeGit(tokens: readonly string[]): string | null {
 	const { subcommand, rest } = extractGitSubcommandAndRest(tokens);
 
 	if (!subcommand) {
@@ -66,7 +120,7 @@ export function analyzeGit(tokens: string[]): string | null {
 	}
 }
 
-function extractGitSubcommandAndRest(tokens: string[]): {
+function extractGitSubcommandAndRest(tokens: readonly string[]): {
 	subcommand: string | null;
 	rest: string[];
 } {
@@ -74,8 +128,9 @@ function extractGitSubcommandAndRest(tokens: string[]): {
 		return { subcommand: null, rest: [] };
 	}
 
-	const firstToken = tokens[0]?.toLowerCase();
-	if (firstToken !== "git" && !firstToken?.endsWith("/git")) {
+	const firstToken = tokens[0];
+	const command = firstToken ? getBasename(firstToken).toLowerCase() : null;
+	if (command !== "git") {
 		return { subcommand: null, rest: [] };
 	}
 
@@ -111,9 +166,9 @@ function extractGitSubcommandAndRest(tokens: string[]): {
 	return { subcommand: null, rest: [] };
 }
 
-function analyzeGitCheckout(tokens: string[]): string | null {
-	const hasDoubleDash = tokens.includes("--");
-	const doubleDashIdx = tokens.indexOf("--");
+function analyzeGitCheckout(tokens: readonly string[]): string | null {
+	const { index: doubleDashIdx, before: beforeDash } =
+		splitAtDoubleDash(tokens);
 
 	for (const token of tokens) {
 		if (token === "-b" || token === "-B" || token === "--orphan") {
@@ -127,11 +182,8 @@ function analyzeGitCheckout(tokens: string[]): string | null {
 		}
 	}
 
-	if (hasDoubleDash) {
-		const beforeDash = tokens.slice(0, doubleDashIdx);
-		const hasRefBeforeDash = beforeDash.some(
-			(t) => !t.startsWith("-") && t !== "--",
-		);
+	if (doubleDashIdx !== -1) {
+		const hasRefBeforeDash = beforeDash.some((t) => !t.startsWith("-"));
 
 		if (hasRefBeforeDash) {
 			return REASON_CHECKOUT_REF_PATH;
@@ -147,41 +199,8 @@ function analyzeGitCheckout(tokens: string[]): string | null {
 	return null;
 }
 
-function getCheckoutPositionalArgs(tokens: string[]): string[] {
+function getCheckoutPositionalArgs(tokens: readonly string[]): string[] {
 	const positional: string[] = [];
-	const optsWithValue = new Set([
-		"-b",
-		"-B",
-		"--orphan",
-		"--conflict",
-		"--pathspec-from-file",
-		"--unified",
-	]);
-	const optsWithOptionalValue = new Set([
-		"--recurse-submodules",
-		"--track",
-		"-t",
-	]);
-	const knownOptsNoValue = new Set([
-		"-q",
-		"--quiet",
-		"-f",
-		"--force",
-		"-d",
-		"--detach",
-		"-m",
-		"--merge",
-		"-p",
-		"--patch",
-		"--ours",
-		"--theirs",
-		"--no-track",
-		"--overwrite-ignore",
-		"--no-overwrite-ignore",
-		"--ignore-other-worktrees",
-		"--progress",
-		"--no-progress",
-	]);
 
 	let i = 0;
 	while (i < tokens.length) {
@@ -193,11 +212,11 @@ function getCheckoutPositionalArgs(tokens: string[]): string[] {
 		}
 
 		if (token.startsWith("-")) {
-			if (optsWithValue.has(token)) {
+			if (CHECKOUT_OPTS_WITH_VALUE.has(token)) {
 				i += 2;
 			} else if (token.startsWith("--") && token.includes("=")) {
 				i++;
-			} else if (optsWithOptionalValue.has(token)) {
+			} else if (CHECKOUT_OPTS_WITH_OPTIONAL_VALUE.has(token)) {
 				const nextToken = tokens[i + 1];
 				if (
 					nextToken &&
@@ -220,9 +239,9 @@ function getCheckoutPositionalArgs(tokens: string[]): string[] {
 				}
 			} else if (
 				token.startsWith("--") &&
-				!knownOptsNoValue.has(token) &&
-				!optsWithValue.has(token) &&
-				!optsWithOptionalValue.has(token)
+				!CHECKOUT_KNOWN_OPTS_NO_VALUE.has(token) &&
+				!CHECKOUT_OPTS_WITH_VALUE.has(token) &&
+				!CHECKOUT_OPTS_WITH_OPTIONAL_VALUE.has(token)
 			) {
 				const nextToken = tokens[i + 1];
 				if (nextToken && !nextToken.startsWith("-")) {
@@ -242,7 +261,7 @@ function getCheckoutPositionalArgs(tokens: string[]): string[] {
 	return positional;
 }
 
-function analyzeGitRestore(tokens: string[]): string | null {
+function analyzeGitRestore(tokens: readonly string[]): string | null {
 	let hasStaged = false;
 	for (const token of tokens) {
 		if (token === "--help" || token === "--version") {
@@ -260,7 +279,7 @@ function analyzeGitRestore(tokens: string[]): string | null {
 	return hasStaged ? null : REASON_RESTORE;
 }
 
-function analyzeGitReset(tokens: string[]): string | null {
+function analyzeGitReset(tokens: readonly string[]): string | null {
 	for (const token of tokens) {
 		if (token === "--hard") {
 			return REASON_RESET_HARD;
@@ -272,32 +291,25 @@ function analyzeGitReset(tokens: string[]): string | null {
 	return null;
 }
 
-function analyzeGitClean(tokens: string[]): string | null {
+function analyzeGitClean(tokens: readonly string[]): string | null {
 	for (const token of tokens) {
 		if (token === "-n" || token === "--dry-run") {
 			return null;
 		}
 	}
 
-	for (const token of tokens) {
-		if (token === "-f" || token === "--force") {
-			return REASON_CLEAN;
-		}
-		if (
-			token.startsWith("-") &&
-			!token.startsWith("--") &&
-			token.includes("f")
-		) {
-			return REASON_CLEAN;
-		}
+	const shortOpts = extractShortOpts(tokens.filter((t) => t !== "--"));
+	if (tokens.includes("--force") || shortOpts.has("-f")) {
+		return REASON_CLEAN;
 	}
 
 	return null;
 }
 
-function analyzeGitPush(tokens: string[]): string | null {
-	let hasForce = false;
+function analyzeGitPush(tokens: readonly string[]): string | null {
 	let hasForceWithLease = false;
+	const shortOpts = extractShortOpts(tokens.filter((t) => t !== "--"));
+	const hasForce = tokens.includes("--force") || shortOpts.has("-f");
 
 	for (const token of tokens) {
 		if (
@@ -305,16 +317,6 @@ function analyzeGitPush(tokens: string[]): string | null {
 			token.startsWith("--force-with-lease=")
 		) {
 			hasForceWithLease = true;
-		}
-		if (token === "--force" || token === "-f") {
-			hasForce = true;
-		}
-		if (
-			token.startsWith("-") &&
-			!token.startsWith("--") &&
-			token.includes("f")
-		) {
-			hasForce = true;
 		}
 	}
 
@@ -325,23 +327,15 @@ function analyzeGitPush(tokens: string[]): string | null {
 	return null;
 }
 
-function analyzeGitBranch(tokens: string[]): string | null {
-	for (const token of tokens) {
-		if (token === "-D") {
-			return REASON_BRANCH_DELETE;
-		}
-		if (
-			token.startsWith("-") &&
-			!token.startsWith("--") &&
-			token.includes("D")
-		) {
-			return REASON_BRANCH_DELETE;
-		}
+function analyzeGitBranch(tokens: readonly string[]): string | null {
+	const shortOpts = extractShortOpts(tokens.filter((t) => t !== "--"));
+	if (shortOpts.has("-D")) {
+		return REASON_BRANCH_DELETE;
 	}
 	return null;
 }
 
-function analyzeGitStash(tokens: string[]): string | null {
+function analyzeGitStash(tokens: readonly string[]): string | null {
 	for (const token of tokens) {
 		if (token === "drop") {
 			return REASON_STASH_DROP;
@@ -353,24 +347,15 @@ function analyzeGitStash(tokens: string[]): string | null {
 	return null;
 }
 
-function analyzeGitWorktree(tokens: string[]): string | null {
+function analyzeGitWorktree(tokens: readonly string[]): string | null {
 	const hasRemove = tokens.includes("remove");
 	if (!hasRemove) return null;
 
-	const doubleDashIdx = tokens.indexOf("--");
-	let hasForce = false;
-
-	for (let i = 0; i < tokens.length; i++) {
-		if (doubleDashIdx !== -1 && i >= doubleDashIdx) break;
-		const token = tokens[i];
+	const { before } = splitAtDoubleDash(tokens);
+	for (const token of before) {
 		if (token === "--force" || token === "-f") {
-			hasForce = true;
-			break;
+			return REASON_WORKTREE_REMOVE_FORCE;
 		}
-	}
-
-	if (hasForce) {
-		return REASON_WORKTREE_REMOVE_FORCE;
 	}
 
 	return null;
