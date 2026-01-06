@@ -36,7 +36,8 @@
 		"@types/shell-quote": "^1.7.5",
 		"husky": "^9.1.7",
 		"knip": "^5.79.0",
-		"lint-staged": "^16.2.7"
+		"lint-staged": "^16.2.7",
+		"zod": "^4.3.5"
 	},
 	"peerDependencies": {
 		"typescript": "^5"
