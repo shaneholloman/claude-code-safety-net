@@ -14,6 +14,42 @@ export const INCLUDED_PREFIXES = ["feat:", "fix:"];
 export const REPO =
 	process.env.GITHUB_REPOSITORY ?? "kenryu42/claude-code-safety-net";
 
+/** Paths that indicate Claude Code plugin changes */
+const CLAUDE_CODE_PATHS = ["commands/", "hooks/", ".claude-plugin/"];
+
+/**
+ * Get the files changed in a commit.
+ */
+async function getChangedFiles(hash: string): Promise<string[]> {
+	try {
+		const output =
+			await $`git diff-tree --no-commit-id --name-only -r ${hash}`.text();
+		return output.split("\n").filter(Boolean);
+	} catch {
+		return [];
+	}
+}
+
+/**
+ * Check if a file path belongs to Claude Code plugin.
+ */
+function isClaudeCodeFile(path: string): boolean {
+	return CLAUDE_CODE_PATHS.some((prefix) => path.startsWith(prefix));
+}
+
+/**
+ * Classify a commit based on its changed files.
+ * Returns "core" if any non-Claude-Code file is touched (Core wins ties).
+ */
+function classifyCommit(files: string[]): "core" | "claude-code" {
+	if (files.length === 0) return "core";
+
+	const hasCore = files.some((file) => !isClaudeCodeFile(file));
+	if (hasCore) return "core";
+
+	return "claude-code";
+}
+
 /**
  * Check if a commit message should be included in the changelog.
  * @param message - The commit message (can include hash prefix like "abc1234 feat: message")
@@ -36,10 +72,49 @@ export async function getLatestReleasedTag(): Promise<string | null> {
 	}
 }
 
+interface CategorizedChangelog {
+	core: string[];
+	claudeCode: string[];
+}
+
+/**
+ * Format changelog and contributors into release notes.
+ */
+export function formatReleaseNotes(
+	changelog: CategorizedChangelog,
+	contributors: string[],
+): string[] {
+	const notes: string[] = [];
+
+	// Core section
+	notes.push("## Core");
+	if (changelog.core.length > 0) {
+		notes.push(...changelog.core);
+	} else {
+		notes.push("No changes in this release");
+	}
+
+	// Claude Code section
+	notes.push("");
+	notes.push("## Claude Code");
+	if (changelog.claudeCode.length > 0) {
+		notes.push(...changelog.claudeCode);
+	} else {
+		notes.push("No changes in this release");
+	}
+
+	// Contributors section
+	if (contributors.length > 0) {
+		notes.push(...contributors);
+	}
+
+	return notes;
+}
+
 export async function generateChangelog(
 	previousTag: string,
-): Promise<string[]> {
-	const notes: string[] = [];
+): Promise<CategorizedChangelog> {
+	const result: CategorizedChangelog = { core: [], claudeCode: [] };
 
 	try {
 		const log =
@@ -49,13 +124,23 @@ export async function generateChangelog(
 			.filter((line) => line && isIncludedCommit(line));
 
 		for (const commit of commits) {
-			notes.push(`- ${commit}`);
+			const hash = commit.split(" ")[0];
+			if (!hash) continue;
+
+			const files = await getChangedFiles(hash);
+			const category = classifyCommit(files);
+
+			if (category === "core") {
+				result.core.push(`- ${commit}`);
+			} else {
+				result.claudeCode.push(`- ${commit}`);
+			}
 		}
 	} catch {
 		// No commits found
 	}
 
-	return notes;
+	return result;
 }
 
 export async function getContributors(previousTag: string): Promise<string[]> {
@@ -109,13 +194,9 @@ async function main(): Promise<void> {
 
 	const changelog = await generateChangelog(previousTag);
 	const contributors = await getContributors(previousTag);
-	const notes = [...changelog, ...contributors];
+	const notes = formatReleaseNotes(changelog, contributors);
 
-	if (notes.length === 0) {
-		console.log("No notable changes");
-	} else {
-		console.log(notes.join("\n"));
-	}
+	console.log(notes.join("\n"));
 }
 
 if (import.meta.main) {

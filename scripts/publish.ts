@@ -1,7 +1,11 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun";
-import { generateChangelog, getContributors } from "./generate-changelog";
+import {
+	formatReleaseNotes,
+	generateChangelog,
+	getContributors,
+} from "./generate-changelog";
 
 const PACKAGE_NAME = "cc-safety-net";
 
@@ -150,7 +154,7 @@ async function main(): Promise<void> {
 	await updateBinVersion(newVersion);
 	const changelog = await generateChangelog(`v${previous}`);
 	const contributors = await getContributors(`v${previous}`);
-	const notes = [...changelog, ...contributors];
+	const notes = formatReleaseNotes(changelog, contributors);
 
 	await buildAndPublish();
 	await gitTagAndRelease(newVersion, notes);
