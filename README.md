@@ -1,6 +1,7 @@
 # Claude Code Safety Net
 
 [![CI](https://github.com/kenryu42/claude-code-safety-net/actions/workflows/ci.yml/badge.svg)](https://github.com/kenryu42/claude-code-safety-net/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/github/kenryu42/claude-code-safety-net/branch/main/graph/badge.svg?token=C9QTION6ZF)](https://codecov.io/github/kenryu42/claude-code-safety-net)
 [![Version](https://img.shields.io/github/v/tag/kenryu42/claude-code-safety-net?label=version&color=blue)](https://github.com/kenryu42/claude-code-safety-net)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Plugin-orange)](https://platform.claude.com/docs/en/agent-sdk/plugins)
 [![Claude Code](https://img.shields.io/badge/OpenCode-Plugin-black)](https://opencode.ai/docs/plugins/)
