@@ -1,14 +1,10 @@
----
-description: Set custom rules for Safety Net
----
-
-You are helping the user configure custom blocking rules for claude-code-safety-net.
+export const SET_CUSTOM_RULES_TEMPLATE = `You are helping the user configure custom blocking rules for claude-code-safety-net.
 
 ## Context
 
 ### Schema Documentation
 
-!`npx -y cc-safety-net --custom-rules-doc`
+!\`npx -y cc-safety-net --custom-rules-doc\`
 
 ## Your Task
 
@@ -17,15 +13,15 @@ Follow this flow exactly:
 ### Step 1: Ask for Scope
 
 Ask: **Which scope would you like to configure?**
-- **User** (`~/.cc-safety-net/config.json`) - applies to all your projects
-- **Project** (`.safety-net.json`) - applies only to this project
+- **User** (\`~/.cc-safety-net/config.json\`) - applies to all your projects
+- **Project** (\`.safety-net.json\`) - applies only to this project
 
 ### Step 2: Show Examples and Ask for Rules
 
 Show examples in natural language:
-- "Block `git add -A` and `git add .` to prevent blanket staging"
-- "Block `npm install -g` to prevent global package installs"
-- "Block `docker system prune` to prevent accidental cleanup"
+- "Block \`git add -A\` and \`git add .\` to prevent blanket staging"
+- "Block \`npm install -g\` to prevent global package installs"
+- "Block \`docker system prune\` to prevent accidental cleanup"
 
 Ask the user to describe rules in natural language. They can list multiple.
 
@@ -41,8 +37,8 @@ Display the generated JSON and ask:
 
 ### Step 5: Check and Handle Existing Config
 
-1. Check existing User Config with `cat ~/.cc-safety-net/config.json 2>/dev/null || echo "No user config found"`
-2. Check existing Project Config with `cat .safety-net.json 2>/dev/null || echo "No project config found"`
+1. Check existing User Config with \`cat ~/.cc-safety-net/config.json 2>/dev/null || echo "No user config found"\`
+2. Check existing Project Config with \`cat .safety-net.json 2>/dev/null || echo "No project config found"\`
 
 If the chosen scope already has a config:
 Show the existing config to the user.
@@ -50,7 +46,7 @@ Ask: **Merge** (add new rules, duplicates use new version) or **Replace**?
 
 ### Step 6: Write and Validate
 
-Write the config to the chosen scope, then validate with `npx -y cc-safety-net --verify-config`.
+Write the config to the chosen scope, then validate with \`npx -y cc-safety-net --verify-config\`.
 
 If validation errors:
 - Show specific errors
@@ -68,4 +64,4 @@ Tell the user:
 
 - Custom rules can only ADD restrictions, not bypass built-in protections
 - Rule names must be unique (case-insensitive)
-- Invalid config → entire config ignored, only built-in rules apply
+- Invalid config → entire config ignored, only built-in rules apply`;
