@@ -7,8 +7,9 @@ const PACKAGE_NAME = 'cc-safety-net';
 
 const bump = process.env.BUMP as 'major' | 'minor' | 'patch' | undefined;
 const versionOverride = process.env.VERSION;
+const dryRun = process.argv.includes('--dry-run');
 
-console.log('=== Publishing cc-safety-net ===\n');
+console.log(`=== ${dryRun ? '[DRY-RUN] ' : ''}Publishing cc-safety-net ===\n`);
 
 async function fetchPreviousVersion(): Promise<string> {
   try {
@@ -40,6 +41,10 @@ function bumpVersion(version: string, type: 'major' | 'minor' | 'patch'): string
 
 async function updatePackageVersion(newVersion: string): Promise<void> {
   const pkgPath = new URL('../package.json', import.meta.url).pathname;
+  if (dryRun) {
+    console.log(`Would update: ${pkgPath}`);
+    return;
+  }
   let pkg = await Bun.file(pkgPath).text();
   pkg = pkg.replace(/"version": "[^"]+"/, `"version": "${newVersion}"`);
   await Bun.write(pkgPath, pkg);
@@ -48,6 +53,10 @@ async function updatePackageVersion(newVersion: string): Promise<void> {
 
 async function updatePluginVersion(newVersion: string): Promise<void> {
   const pluginPath = new URL('../.claude-plugin/plugin.json', import.meta.url).pathname;
+  if (dryRun) {
+    console.log(`Would update: ${pluginPath}`);
+    return;
+  }
   let plugin = await Bun.file(pluginPath).text();
   plugin = plugin.replace(/"version": "[^"]+"/, `"version": "${newVersion}"`);
   await Bun.write(pluginPath, plugin);
@@ -56,13 +65,21 @@ async function updatePluginVersion(newVersion: string): Promise<void> {
 
 async function updateBinVersion(newVersion: string): Promise<void> {
   const binPath = new URL('../src/bin/cc-safety-net.ts', import.meta.url).pathname;
+  if (dryRun) {
+    console.log(`Would update: ${binPath}`);
+    return;
+  }
   let bin = await Bun.file(binPath).text();
-  bin = bin.replace(/const VERSION = "[^"]+"/, `const VERSION = "${newVersion}"`);
+  bin = bin.replace(/const VERSION = ['"][^'"]+['"]/, `const VERSION = '${newVersion}'`);
   await Bun.write(binPath, bin);
   console.log(`Updated: ${binPath}`);
 }
 
 async function buildAndPublish(): Promise<void> {
+  if (dryRun) {
+    console.log('\nWould publish to npm');
+    return;
+  }
   console.log('\nPublishing to npm...');
   // --ignore-scripts: workflow already built, skip prepublishOnly
   if (process.env.CI) {
@@ -73,6 +90,10 @@ async function buildAndPublish(): Promise<void> {
 }
 
 async function gitTagAndRelease(newVersion: string, notes: string[]): Promise<void> {
+  if (dryRun) {
+    console.log('\nWould commit, tag, push, and create GitHub release (CI only)');
+    return;
+  }
   if (!process.env.CI) return;
 
   console.log('\nCommitting and tagging...');
@@ -136,7 +157,13 @@ async function main(): Promise<void> {
   await buildAndPublish();
   await gitTagAndRelease(newVersion, notes);
 
-  console.log(`\n=== Successfully published ${PACKAGE_NAME}@${newVersion} ===`);
+  if (dryRun) {
+    console.log('\n--- Release Notes ---');
+    console.log(notes.length > 0 ? notes.join('\n') : 'No notable changes');
+    console.log(`\n=== [DRY-RUN] Would publish ${PACKAGE_NAME}@${newVersion} ===`);
+  } else {
+    console.log(`\n=== Successfully published ${PACKAGE_NAME}@${newVersion} ===`);
+  }
 }
 
 main();
