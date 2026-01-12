@@ -3,14 +3,14 @@
 [![CI](https://github.com/kenryu42/claude-code-safety-net/actions/workflows/ci.yml/badge.svg)](https://github.com/kenryu42/claude-code-safety-net/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/github/kenryu42/claude-code-safety-net/branch/main/graph/badge.svg?token=C9QTION6ZF)](https://codecov.io/github/kenryu42/claude-code-safety-net)
 [![Version](https://img.shields.io/github/v/tag/kenryu42/claude-code-safety-net?label=version&color=blue)](https://github.com/kenryu42/claude-code-safety-net)
-[![Claude Code](https://img.shields.io/badge/Claude%20Code-D27656)](https://platform.claude.com/docs/en/agent-sdk/plugins)
-[![OpenCode](https://img.shields.io/badge/OpenCode-black)](https://opencode.ai/docs/plugins/)
-[![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-678AE3)](https://github.com/kenryu42/gemini-safety-net)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-D27656)](#claude-code-installation)
+[![OpenCode](https://img.shields.io/badge/OpenCode-black)](#opencode-installation)
+[![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-678AE3)](#gemini-cli-installation)
 [![License: MIT](https://img.shields.io/badge/License-MIT-red.svg)](https://opensource.org/licenses/MIT)
 
 <div align="center">
 
-[![CC Safety Net](./.github/assets/cc-safety-net.png)](https://github.com/kenryu42/claude-code-safety-net)
+[![CC Safety Net](./.github/assets/cc-safety-net.png)](./.github/assets/cc-safety-net.png)
 
 </div>
 
@@ -426,7 +426,7 @@ Custom rules use **silent fallback** error handling. If your config file is inva
 
 
 > [!IMPORTANT]  
-> If you add or modify custom rules manually, always validate them with the `/verify-custom-rules` slash command.
+> If you add or modify custom rules manually, always validate them with `npx -y cc-safety-net --verify-config` or `/verify-custom-rules` slash command in your coding agent.
 
 ### Block Output Format
 
