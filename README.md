@@ -26,6 +26,10 @@ A Claude Code plugin that acts as a safety net, catching destructive git and fil
   - [Claude Code Installation](#claude-code-installation)
   - [OpenCode Installation](#opencode-installation)
   - [Gemini CLI Installation](#gemini-cli-installation)
+- [Status Line Integration](#status-line-integration)
+  - [Setup via Slash Command](#setup-via-slash-command)
+  - [Manual Setup](#manual-setup)
+  - [Emoji Mode Indicators](#emoji-mode-indicators)
 - [Commands Blocked](#commands-blocked)
 - [Commands Allowed](#commands-allowed)
 - [What Happens When Blocked](#what-happens-when-blocked)
@@ -204,6 +208,81 @@ gemini extensions install https://github.com/kenryu42/gemini-safety-net
 >   }
 > }
 > ```
+
+## Status Line Integration
+
+Safety Net can display its status in Claude Code's status line, showing whether protection is active and which modes are enabled.
+
+### Setup via Slash Command
+
+The easiest way to configure the status line is using the built-in slash command:
+
+```
+/set-statusline
+```
+
+This interactive command will:
+1. Ask whether you prefer `bunx` or `npx`
+2. Check for existing status line configuration
+3. Offer to replace or pipe with existing commands
+4. Write the configuration to `~/.claude/settings.json`
+
+### Manual Setup
+
+Add the following to your `~/.claude/settings.json`:
+
+**Using Bun (recommended):**
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bunx cc-safety-net --statusline"
+  }
+}
+```
+
+**Using npm:**
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "npx -y cc-safety-net --statusline"
+  }
+}
+```
+
+**Piping with existing status line:**
+
+If you already have a status line command, you can pipe Safety Net at the end:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "your-existing-command | bunx cc-safety-net --statusline"
+  }
+}
+```
+
+Changes take effect immediately — no restart needed.
+
+### Emoji Mode Indicators
+
+The status line displays different emojis based on the current configuration:
+
+| Status | Display | Meaning |
+|--------|---------|---------|
+| Plugin disabled | `🛡️ Safety Net ❌` | Safety Net plugin is not enabled |
+| Default mode | `🛡️ Safety Net ✅` | Protection active with default settings |
+| Strict mode | `🛡️ Safety Net 🔒` | `SAFETY_NET_STRICT=1` — fail-closed on unparseable commands |
+| Paranoid mode | `🛡️ Safety Net 👁️` | `SAFETY_NET_PARANOID=1` — all paranoid checks enabled |
+| Paranoid RM only | `🛡️ Safety Net 🗑️` | `SAFETY_NET_PARANOID_RM=1` — blocks `rm -rf` even within cwd |
+| Paranoid interpreters only | `🛡️ Safety Net 🐚` | `SAFETY_NET_PARANOID_INTERPRETERS=1` — blocks interpreter one-liners |
+| Strict + Paranoid | `🛡️ Safety Net 🔒👁️` | Both strict and paranoid modes enabled |
+
+Multiple mode emojis are combined when multiple environment variables are set.
 
 ## Commands Blocked
 
