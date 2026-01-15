@@ -63,25 +63,21 @@ async function updatePluginVersion(newVersion: string): Promise<void> {
   console.log(`Updated: ${pluginPath}`);
 }
 
-async function updateBinVersion(newVersion: string): Promise<void> {
-  const binPath = new URL('../src/bin/cc-safety-net.ts', import.meta.url).pathname;
-  if (dryRun) {
-    console.log(`Would update: ${binPath}`);
-    return;
-  }
-  let bin = await Bun.file(binPath).text();
-  bin = bin.replace(/const VERSION = ['"][^'"]+['"]/, `const VERSION = '${newVersion}'`);
-  await Bun.write(binPath, bin);
-  console.log(`Updated: ${binPath}`);
-}
-
 async function buildAndPublish(): Promise<void> {
+  // Build AFTER version files are updated so correct version is injected into bundle
+  console.log('\nBuilding...');
+  const buildResult = Bun.spawnSync(['bun', 'run', 'build']);
+  if (buildResult.exitCode !== 0) {
+    console.error('Build failed');
+    console.error(buildResult.stderr.toString());
+    process.exit(1);
+  }
+
   if (dryRun) {
-    console.log('\nWould publish to npm');
+    console.log('Would publish to npm');
     return;
   }
-  console.log('\nPublishing to npm...');
-  // --ignore-scripts: workflow already built, skip prepublishOnly
+  console.log('Publishing to npm...');
   if (process.env.CI) {
     await $`npm publish --access public --provenance --ignore-scripts`;
   } else {
@@ -99,7 +95,7 @@ async function gitTagAndRelease(newVersion: string, notes: string[]): Promise<vo
   console.log('\nCommitting and tagging...');
   await $`git config user.email "github-actions[bot]@users.noreply.github.com"`;
   await $`git config user.name "github-actions[bot]"`;
-  await $`git add package.json .claude-plugin/plugin.json assets/cc-safety-net.schema.json src/bin/cc-safety-net.ts`;
+  await $`git add package.json .claude-plugin/plugin.json assets/cc-safety-net.schema.json`;
 
   const hasStagedChanges = await $`git diff --cached --quiet`.nothrow();
   if (hasStagedChanges.exitCode !== 0) {
@@ -149,7 +145,6 @@ async function main(): Promise<void> {
 
   await updatePackageVersion(newVersion);
   await updatePluginVersion(newVersion);
-  await updateBinVersion(newVersion);
   const changelog = await generateChangelog(`v${previous}`);
   const contributors = await getContributors(`v${previous}`);
   const notes = formatReleaseNotes(changelog, contributors);
