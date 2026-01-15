@@ -6,7 +6,7 @@
 				"hooks": [
 					{
 						"type": "command",
-						"command": "npx -y cc-safety-net --claude-code"
+            "command": "${CLAUDE_PLUGIN_ROOT}/dist/bin/cc-safety-net.js --claude-code"
 					}
 				]
 			}
