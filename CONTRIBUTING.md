@@ -5,6 +5,7 @@ First off, thanks for taking the time to contribute! This document provides guid
 ## Table of Contents
 
 - [Code of Conduct](#code-of-conduct)
+- [Before You Start: Proposing New Features](#before-you-start-proposing-new-features)
 - [Getting Started](#getting-started)
   - [Prerequisites](#prerequisites)
   - [Development Setup](#development-setup)
@@ -17,6 +18,7 @@ First off, thanks for taking the time to contribute! This document provides guid
   - [Adding a Git Rule](#adding-a-git-rule)
   - [Adding an rm Rule](#adding-an-rm-rule)
   - [Adding Other Command Rules](#adding-other-command-rules)
+- [Before You Start: Proposing New Features](#before-you-start-proposing-new-features)
 - [Pull Request Process](#pull-request-process)
 - [Publishing](#publishing)
 - [Getting Help](#getting-help)
@@ -24,6 +26,38 @@ First off, thanks for taking the time to contribute! This document provides guid
 ## Code of Conduct
 
 Be respectful, inclusive, and constructive. We're all here to make better tools together.
+
+## Before You Start: Proposing New Features
+
+**Please open an issue to discuss new features before implementing them.**
+
+This project has a focused scope: **preventing coding agents from making accidental mistakes that cause data loss** (e.g., `rm -rf ~/`, `git reset --hard`). It is NOT a general security hardening tool or an attack prevention system.
+
+### Why Discuss First?
+
+1. **Scope alignment** — Your idea might be great but outside the project's scope
+2. **Approach feedback** — We can suggest the best way to implement it
+3. **Avoid wasted effort** — Save time for both you and maintainers
+
+### When to Open an Issue First
+
+| Scenario | Open Issue First? |
+|----------|-------------------|
+| New detection rule (git, rm, etc.) | **Yes** |
+| New command category to block | **Yes** |
+| Architectural changes | **Yes** |
+| New configuration options | **Yes** |
+| Typo/documentation fixes | No, just PR |
+| Small bug fixes with obvious solution | No, just PR |
+
+### What to Include in Your Proposal
+
+- **What** you want to add/change
+- **Why** it fits the project scope (preventing accidental data loss)
+- **Real-world scenario** where this would help
+- Any **trade-offs** you've considered
+
+A quick 5-minute issue can save hours of implementation time on both sides.
 
 ## Getting Started
 
