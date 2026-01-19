@@ -79,6 +79,7 @@ The hook receives JSON input on stdin containing `tool_name` and `tool_input`. F
 - All functions require type annotations
 - Use `type | null` syntax (not `undefined` where possible)
 - Use kebab-case for file names (`rules-git.ts`, not `rulesGit.ts`)
+- For test-only exports, add `/** @internal Exported for testing */` JSDoc to satisfy knip
 
 ## Commit Conventions
 

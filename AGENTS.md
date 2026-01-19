@@ -57,6 +57,13 @@ function analyze(command, strict) { ... }  // Missing types
 - Constants: `UPPER_SNAKE_CASE` (reason strings: `REASON_*`)
 - Private/internal: `_leadingUnderscore` (for module-private functions)
 
+### Test-Only Exports
+When exporting a function solely for testing, add `@internal` JSDoc to satisfy knip:
+```typescript
+/** @internal Exported for testing */
+export const myInternalFn = () => { ... };
+```
+
 ### Error Handling
 - Print errors to stderr
 - Exit codes: `0` = success, `1` = error
