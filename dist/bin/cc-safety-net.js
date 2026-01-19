@@ -2691,7 +2691,7 @@ function formatHooksSection(hooks) {
     }
     if (hook.errors && hook.errors.length > 0) {
       for (const err of hook.errors) {
-        if (hook.configured) {
+        if (hook.status === "configured") {
           warnings.push({ platform: platformName, message: err });
         } else {
           errors.push({ platform: platformName, message: err });
@@ -2718,28 +2718,43 @@ function formatHooksSection(hooks) {
 }
 function formatHooksTable(hooks) {
   const headers = ["Platform", "Status", "Tests"];
-  const rows = hooks.map((h) => {
+  const getStatusDisplay = (h) => {
+    switch (h.status) {
+      case "configured":
+        return { text: "Configured", colored: colors.green("Configured") };
+      case "disabled":
+        return { text: "Disabled", colored: colors.yellow("Disabled") };
+      case "n/a":
+        return { text: "N/A", colored: colors.dim("N/A") };
+    }
+  };
+  const rowData = hooks.map((h) => {
     const platformName = PLATFORM_NAMES[h.platform] ?? h.platform;
-    const statusText = h.configured ? "Configured" : "Not configured";
+    const statusDisplay = getStatusDisplay(h);
     let testsText = "-";
-    if (h.configured && h.selfTest) {
+    if (h.status === "configured" && h.selfTest) {
       const label = h.selfTest.failed > 0 ? "FAIL" : "OK";
       testsText = `${h.selfTest.passed}/${h.selfTest.total} ${label}`;
     }
-    return [platformName, statusText, testsText];
+    return {
+      colored: [platformName, statusDisplay.colored, testsText],
+      raw: [platformName, statusDisplay.text, testsText]
+    };
   });
+  const rows = rowData.map((r) => r.colored);
+  const rawRows = rowData.map((r) => r.raw);
   const colWidths = headers.map((h, i) => {
-    const maxDataWidth = Math.max(...rows.map((r) => r[i]?.length ?? 0));
+    const maxDataWidth = Math.max(...rawRows.map((r) => r[i]?.length ?? 0));
     return Math.max(h.length, maxDataWidth);
   });
-  const pad = (s, w) => s.padEnd(w);
+  const pad = (s, w, raw) => s + " ".repeat(Math.max(0, w - raw.length));
   const line = (char, corners) => corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
-  const formatRow = (cells) => `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0)).join(" │ ")} │`;
+  const formatRow = (cells, rawCells) => `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0, rawCells[i] ?? "")).join(" │ ")} │`;
   const tableLines = [
     `   ${line("─", ["┌", "┬", "┐"])}`,
-    `   ${formatRow(headers)}`,
+    `   ${formatRow(headers, headers)}`,
     `   ${line("─", ["├", "┼", "┤"])}`,
-    ...rows.map((r) => `   ${formatRow(r)}`),
+    ...rows.map((r, i) => `   ${formatRow(r, rawRows[i] ?? [])}`),
     `   ${line("─", ["└", "┴", "┘"])}`
   ];
   return tableLines.join(`
@@ -2793,31 +2808,39 @@ function formatConfigSection(report) {
 }
 function formatConfigTable(userConfig, projectConfig) {
   const headers = ["Scope", "Status"];
-  const getStatus = (config) => {
-    if (!config.exists)
-      return "Not found";
+  const getStatusDisplay = (config) => {
+    if (!config.exists) {
+      return { text: "N/A", colored: colors.dim("N/A") };
+    }
     if (!config.valid) {
       const errMsg = config.errors?.[0] ?? "unknown error";
-      return `Invalid (${errMsg})`;
+      const text = `Invalid (${errMsg})`;
+      return { text, colored: colors.red(text) };
     }
-    return "Configured";
+    return { text: "Configured", colored: colors.green("Configured") };
   };
+  const userStatus = getStatusDisplay(userConfig);
+  const projectStatus = getStatusDisplay(projectConfig);
   const rows = [
-    ["User", getStatus(userConfig)],
-    ["Project", getStatus(projectConfig)]
+    ["User", userStatus.colored],
+    ["Project", projectStatus.colored]
+  ];
+  const rawRows = [
+    ["User", userStatus.text],
+    ["Project", projectStatus.text]
   ];
   const colWidths = headers.map((h, i) => {
-    const maxDataWidth = Math.max(...rows.map((r) => r[i]?.length ?? 0));
+    const maxDataWidth = Math.max(...rawRows.map((r) => r[i]?.length ?? 0));
     return Math.max(h.length, maxDataWidth);
   });
-  const pad = (s, w) => s.padEnd(w);
+  const pad = (s, w, raw) => s + " ".repeat(Math.max(0, w - raw.length));
   const line = (char, corners) => corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
-  const formatRow = (cells) => `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0)).join(" │ ")} │`;
+  const formatRow = (cells, rawCells) => `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0, rawCells[i] ?? "")).join(" │ ")} │`;
   const tableLines = [
     `   ${line("─", ["┌", "┬", "┐"])}`,
-    `   ${formatRow(headers)}`,
+    `   ${formatRow(headers, headers)}`,
     `   ${line("─", ["├", "┼", "┤"])}`,
-    ...rows.map((r) => `   ${formatRow(r)}`),
+    ...rows.map((r, i) => `   ${formatRow(r, rawRows[i] ?? [])}`),
     `   ${line("─", ["└", "┴", "┘"])}`
   ];
   return tableLines.join(`
@@ -2856,54 +2879,181 @@ function formatEnvironmentTable(envVars) {
 }
 function formatActivitySection(activity) {
   const lines = [];
-  lines.push("Recent Activity");
   if (activity.totalBlocked === 0) {
+    lines.push("Recent Activity");
     lines.push("   No blocked commands in the last 7 days");
     lines.push("   Tip: This is normal for new installations");
   } else {
-    lines.push(`   ${activity.totalBlocked} commands blocked across ${activity.sessionCount} sessions`);
-    lines.push("");
-    lines.push("   Latest:");
-    for (const entry of activity.recentEntries) {
-      const cmd = entry.command.length > 40 ? `${entry.command.slice(0, 37)}...` : entry.command;
-      lines.push(`   • ${entry.relativeTime.padEnd(8)} ${cmd}`);
-    }
+    lines.push(`Recent Activity (${activity.totalBlocked} blocked / ${activity.sessionCount} sessions)`);
+    lines.push(formatActivityTable(activity.recentEntries));
   }
   return lines.join(`
 `);
 }
+function formatActivityTable(entries) {
+  const headers = ["Time", "Command"];
+  const rows = entries.map((e) => {
+    const cmd = e.command.length > 40 ? `${e.command.slice(0, 37)}...` : e.command;
+    return [e.relativeTime, cmd];
+  });
+  const colWidths = headers.map((h, i) => {
+    const maxDataWidth = Math.max(...rows.map((r) => r[i]?.length ?? 0));
+    return Math.max(h.length, maxDataWidth);
+  });
+  const pad = (s, w) => s.padEnd(w);
+  const line = (char, corners) => corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
+  const formatRow = (cells) => `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0)).join(" │ ")} │`;
+  const tableLines = [
+    `   ${line("─", ["┌", "┬", "┐"])}`,
+    `   ${formatRow(headers)}`,
+    `   ${line("─", ["├", "┼", "┤"])}`,
+    ...rows.map((r) => `   ${formatRow(r)}`),
+    `   ${line("─", ["└", "┴", "┘"])}`
+  ];
+  return tableLines.join(`
+`);
+}
 function formatUpdateSection(update) {
   const lines = [];
-  lines.push("Update Available");
-  lines.push(`   Installed: ${update.currentVersion}`);
-  lines.push(`   Latest:    ${update.latestVersion}`);
-  lines.push("");
-  lines.push("   Run: bunx cc-safety-net@latest doctor");
-  lines.push("   Or:  npx cc-safety-net@latest doctor");
+  lines.push("Update Check");
+  const rowData = [];
+  if (update.latestVersion === null && !update.error) {
+    rowData.push({
+      label: "Status",
+      value: colors.dim("Skipped"),
+      rawValue: "Skipped"
+    });
+    rowData.push({
+      label: "Installed",
+      value: update.currentVersion,
+      rawValue: update.currentVersion
+    });
+    lines.push(formatUpdateTable(rowData));
+    return lines.join(`
+`);
+  }
+  if (update.error) {
+    rowData.push({
+      label: "Status",
+      value: `${colors.yellow("⚠")} Error`,
+      rawValue: "⚠ Error"
+    });
+    rowData.push({
+      label: "Installed",
+      value: update.currentVersion,
+      rawValue: update.currentVersion
+    });
+    rowData.push({
+      label: "Error",
+      value: colors.dim(update.error),
+      rawValue: update.error
+    });
+    lines.push(formatUpdateTable(rowData));
+    return lines.join(`
+`);
+  }
+  if (update.updateAvailable) {
+    rowData.push({
+      label: "Status",
+      value: `${colors.yellow("⚠")} Update Available`,
+      rawValue: "⚠ Update Available"
+    });
+    rowData.push({
+      label: "Current",
+      value: update.currentVersion,
+      rawValue: update.currentVersion
+    });
+    rowData.push({
+      label: "Latest",
+      value: colors.green(update.latestVersion ?? ""),
+      rawValue: update.latestVersion ?? ""
+    });
+    lines.push(formatUpdateTable(rowData));
+    lines.push("");
+    lines.push("   Run: bunx cc-safety-net@latest doctor");
+    lines.push("   Or:  npx cc-safety-net@latest doctor");
+    return lines.join(`
+`);
+  }
+  rowData.push({
+    label: "Status",
+    value: `${colors.green("✓")} Up to date`,
+    rawValue: "✓ Up to date"
+  });
+  rowData.push({
+    label: "Version",
+    value: update.currentVersion,
+    rawValue: update.currentVersion
+  });
+  lines.push(formatUpdateTable(rowData));
   return lines.join(`
+`);
+}
+function formatUpdateTable(rowData) {
+  const rows = rowData.map((r) => [r.label, r.value]);
+  const rawRows = rowData.map((r) => [r.label, r.rawValue]);
+  const colWidths = [0, 1].map((i) => {
+    return Math.max(...rawRows.map((r) => r[i]?.length ?? 0));
+  });
+  const pad = (s, w, raw) => s + " ".repeat(Math.max(0, w - raw.length));
+  const line = (char, corners) => corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
+  const formatRow = (cells, rawCells) => `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0, rawCells[i] ?? "")).join(" │ ")} │`;
+  const tableLines = [
+    `   ${line("─", ["┌", "┬", "┐"])}`,
+    ...rows.map((r, i) => `   ${formatRow(r, rawRows[i] ?? [])}`),
+    `   ${line("─", ["└", "┴", "┘"])}`
+  ];
+  return tableLines.join(`
 `);
 }
 function formatSystemInfoSection(system) {
   const lines = [];
   lines.push("System Info");
-  const labelWidth = 17;
-  const formatLine = (label, value) => {
-    const displayValue = value ?? "not found";
-    return `   ${label.padEnd(labelWidth)}${displayValue}`;
-  };
-  lines.push(formatLine("cc-safety-net:", system.version));
-  lines.push(formatLine("Claude Code:", system.claudeCodeVersion));
-  lines.push(formatLine("OpenCode:", system.openCodeVersion));
-  lines.push(formatLine("Gemini CLI:", system.geminiCliVersion));
-  lines.push(formatLine("Node.js:", system.nodeVersion));
-  lines.push(formatLine("npm:", system.npmVersion));
-  lines.push(formatLine("Bun:", system.bunVersion));
-  lines.push(formatLine("Platform:", system.platform));
+  lines.push(formatSystemInfoTable(system));
   return lines.join(`
 `);
 }
+function formatSystemInfoTable(system) {
+  const headers = ["Component", "Version"];
+  const formatValue = (value) => {
+    if (value === null)
+      return colors.dim("not found");
+    return value;
+  };
+  const rawValue = (value) => {
+    return value ?? "not found";
+  };
+  const rowData = [
+    { label: "cc-safety-net", value: system.version },
+    { label: "Claude Code", value: system.claudeCodeVersion },
+    { label: "OpenCode", value: system.openCodeVersion },
+    { label: "Gemini CLI", value: system.geminiCliVersion },
+    { label: "Node.js", value: system.nodeVersion },
+    { label: "npm", value: system.npmVersion },
+    { label: "Bun", value: system.bunVersion },
+    { label: "Platform", value: system.platform }
+  ];
+  const rows = rowData.map((r) => [r.label, formatValue(r.value)]);
+  const rawRows = rowData.map((r) => [r.label, rawValue(r.value)]);
+  const colWidths = headers.map((h, i) => {
+    const maxDataWidth = Math.max(...rawRows.map((r) => r[i]?.length ?? 0));
+    return Math.max(h.length, maxDataWidth);
+  });
+  const pad = (s, w, raw) => s + " ".repeat(Math.max(0, w - raw.length));
+  const line = (char, corners) => corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
+  const formatRow = (cells, rawCells) => `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0, rawCells[i] ?? "")).join(" │ ")} │`;
+  const tableLines = [
+    `   ${line("─", ["┌", "┬", "┐"])}`,
+    `   ${formatRow(headers, headers)}`,
+    `   ${line("─", ["├", "┼", "┤"])}`,
+    ...rows.map((r, i) => `   ${formatRow(r, rawRows[i] ?? [])}`),
+    `   ${line("─", ["└", "┴", "┘"])}`
+  ];
+  return tableLines.join(`
+`);
+}
 function formatSummary(report) {
-  const hooksFailed = report.hooks.every((h) => !h.configured);
+  const hooksFailed = report.hooks.every((h) => h.status !== "configured");
   const selfTestFailed = report.hooks.some((h) => h.selfTest && h.selfTest.failed > 0);
   const configFailed = (report.userConfig.errors?.length ?? 0) > 0 || (report.projectConfig.errors?.length ?? 0) > 0;
   const failures = [hooksFailed, selfTestFailed, configFailed].filter(Boolean).length;
@@ -3047,46 +3197,35 @@ function stripJsonComments(content) {
 function detectClaudeCode(homeDir) {
   const errors = [];
   const settingsPath = join4(homeDir, ".claude", "settings.json");
+  const pluginKey = "safety-net@cc-marketplace";
   if (existsSync5(settingsPath)) {
     try {
       const settings = JSON.parse(readFileSync4(settingsPath, "utf-8"));
-      const pluginKey = "safety-net@cc-marketplace";
-      if (settings.enabledPlugins?.[pluginKey] === true) {
+      const pluginValue = settings.enabledPlugins?.[pluginKey];
+      if (pluginValue === true) {
         return {
           platform: "claude-code",
-          configured: true,
+          status: "configured",
           method: "marketplace plugin",
           configPath: settingsPath,
           selfTest: runSelfTest()
+        };
+      }
+      if (pluginValue === false) {
+        return {
+          platform: "claude-code",
+          status: "disabled",
+          method: "marketplace plugin",
+          configPath: settingsPath
         };
       }
     } catch (e) {
       errors.push(`Failed to parse settings.json: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
-  const claudeJsonPath = join4(homeDir, ".claude.json");
-  if (existsSync5(claudeJsonPath)) {
-    try {
-      const config = JSON.parse(readFileSync4(claudeJsonPath, "utf-8"));
-      const hooks = config.hooks?.PreToolUse ?? [];
-      const hasSafetyNet = hooks.some((h) => h.command?.includes("cc-safety-net"));
-      if (hasSafetyNet) {
-        return {
-          platform: "claude-code",
-          configured: true,
-          method: "manual hooks config",
-          configPath: claudeJsonPath,
-          selfTest: runSelfTest(),
-          errors: errors.length > 0 ? errors : undefined
-        };
-      }
-    } catch (e) {
-      errors.push(`Failed to parse .claude.json: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
   return {
     platform: "claude-code",
-    configured: false,
+    status: "n/a",
     errors: errors.length > 0 ? errors : undefined
   };
 }
@@ -3106,7 +3245,7 @@ function detectOpenCode(homeDir) {
         if (hasSafetyNet) {
           return {
             platform: "opencode",
-            configured: true,
+            status: "configured",
             method: "plugin array",
             configPath,
             selfTest: runSelfTest(),
@@ -3120,7 +3259,7 @@ function detectOpenCode(homeDir) {
   }
   return {
     platform: "opencode",
-    configured: false,
+    status: "n/a",
     errors: errors.length > 0 ? errors : undefined
   };
 }
@@ -3147,7 +3286,7 @@ function detectGeminiCLI(homeDir, cwd) {
   const errors = [];
   const extensionPath = join4(homeDir, ".gemini", "extensions", "extension-enablement.json");
   if (!existsSync5(extensionPath)) {
-    return { platform: "gemini-cli", configured: false };
+    return { platform: "gemini-cli", status: "n/a" };
   }
   let isInstalled = false;
   let isEnabled = false;
@@ -3165,32 +3304,38 @@ function detectGeminiCLI(homeDir, cwd) {
   if (!isInstalled) {
     return {
       platform: "gemini-cli",
-      configured: false,
+      status: "n/a",
       errors: errors.length > 0 ? errors : undefined
     };
   }
-  const hooksCheck = checkGeminiHooksEnabled(homeDir, cwd, errors);
-  const configured = isInstalled && isEnabled && hooksCheck.enabled;
-  if (configured) {
+  if (!isEnabled) {
+    errors.push("Plugin is installed but disabled (no enabled workspace overrides)");
     return {
       platform: "gemini-cli",
-      configured: true,
+      status: "disabled",
+      method: "extension plugin",
+      configPath: extensionPath,
+      errors
+    };
+  }
+  const hooksCheck = checkGeminiHooksEnabled(homeDir, cwd, errors);
+  if (hooksCheck.enabled) {
+    return {
+      platform: "gemini-cli",
+      status: "configured",
       method: "extension plugin",
       configPath: extensionPath,
       selfTest: runSelfTest(),
       errors: errors.length > 0 ? errors : undefined
     };
   }
-  if (isInstalled && !isEnabled) {
-    errors.push("Plugin is installed but disabled (no enabled workspace overrides)");
-  }
-  if (isInstalled && isEnabled && !hooksCheck.enabled) {
-    errors.push("Hooks are not enabled (set tools.enableHooks: true in settings.json)");
-  }
+  errors.push("Hooks are not enabled (set tools.enableHooks: true in settings.json)");
   return {
     platform: "gemini-cli",
-    configured: false,
-    errors: errors.length > 0 ? errors : undefined
+    status: "n/a",
+    method: "extension plugin",
+    configPath: extensionPath,
+    errors
   };
 }
 function detectAllHooks(cwd, options) {
@@ -3340,7 +3485,7 @@ async function runDoctor(options = {}) {
   } else {
     printReport(report);
   }
-  const hasFailure = hooks.every((h) => !h.configured) || hooks.some((h) => h.selfTest && h.selfTest.failed > 0) || configInfo.userConfig.exists && !configInfo.userConfig.valid || configInfo.projectConfig.exists && !configInfo.projectConfig.valid;
+  const hasFailure = hooks.every((h) => h.status !== "configured") || hooks.some((h) => h.selfTest && h.selfTest.failed > 0) || configInfo.userConfig.exists && !configInfo.userConfig.valid || configInfo.projectConfig.exists && !configInfo.projectConfig.valid;
   return hasFailure ? 1 : 0;
 }
 function printReport(report) {
@@ -3353,11 +3498,9 @@ function printReport(report) {
   console.log();
   console.log(formatActivitySection(report.activity));
   console.log();
-  if (report.update.updateAvailable) {
-    console.log(formatUpdateSection(report.update));
-    console.log();
-  }
   console.log(formatSystemInfoSection(report.system));
+  console.log();
+  console.log(formatUpdateSection(report.update));
   console.log(formatSummary(report));
 }
 

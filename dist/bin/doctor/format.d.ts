@@ -20,15 +20,15 @@ export declare function formatConfigSection(report: DoctorReport): string;
  */
 export declare function formatEnvironmentSection(envVars: EnvVarInfo[]): string;
 /**
- * Format the activity section.
+ * Format the activity section as a table.
  */
 export declare function formatActivitySection(activity: ActivitySummary): string;
 /**
- * Format the update section.
+ * Format the update section as a table.
  */
 export declare function formatUpdateSection(update: UpdateInfo): string;
 /**
- * Format the system info section.
+ * Format the system info section as a table.
  */
 export declare function formatSystemInfoSection(system: SystemInfo): string;
 /**
