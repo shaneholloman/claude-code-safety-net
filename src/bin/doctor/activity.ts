@@ -21,9 +21,10 @@ function formatRelativeTime(date: Date): string {
   return 'just now';
 }
 
-export function getActivitySummary(days: number = 7): ActivitySummary {
-  const logsDir = join(homedir(), '.cc-safety-net', 'logs');
-
+export function getActivitySummary(
+  days: number = 7,
+  logsDir: string = join(homedir(), '.cc-safety-net', 'logs'),
+): ActivitySummary {
   if (!existsSync(logsDir)) {
     return { totalBlocked: 0, sessionCount: 0, recentEntries: [] };
   }

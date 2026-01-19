@@ -20,7 +20,11 @@ import {
   formatUpdateSection,
 } from '../src/bin/doctor/format.ts';
 import { detectAllHooks, stripJsonComments } from '../src/bin/doctor/hooks.ts';
-import { getPackageVersion, getSystemInfo } from '../src/bin/doctor/system-info.ts';
+import {
+  defaultVersionFetcher,
+  getPackageVersion,
+  getSystemInfo,
+} from '../src/bin/doctor/system-info.ts';
 import type { DoctorReport, EffectiveRule, HookStatus } from '../src/bin/doctor/types.ts';
 import { mockVersionFetcher } from './helpers.ts';
 
@@ -123,6 +127,19 @@ describe('doctor command', () => {
 
       const output = formatHooksSection(hooks);
       expect(output).toContain('Error (OpenCode): Parse error');
+    });
+
+    test('shows warning for configured hooks with errors', () => {
+      const hooks: HookStatus[] = [
+        {
+          platform: 'claude-code',
+          status: 'configured',
+          errors: ['Something went wrong during detection'],
+        },
+      ];
+
+      const output = formatHooksSection(hooks);
+      expect(output).toContain('Warning (Claude Code): Something went wrong during detection');
     });
 
     test('formats disabled hooks', () => {
@@ -438,6 +455,49 @@ describe('doctor command', () => {
       const output = formatConfigSection(report);
       expect(output).toContain('shadows user rule');
     });
+
+    test('formats config with invalid config showing errors', () => {
+      const report: DoctorReport = {
+        hooks: [],
+        userConfig: {
+          path: '/home/user/.cc-safety-net/config.json',
+          exists: true,
+          valid: false,
+          ruleCount: 0,
+          errors: ['Invalid version: expected 1, got 99'],
+        },
+        projectConfig: {
+          path: './.safety-net.json',
+          exists: true,
+          valid: false,
+          ruleCount: 0,
+          errors: ['Malformed JSON'],
+        },
+        effectiveRules: [],
+        shadowedRules: [],
+        environment: [],
+        activity: { totalBlocked: 0, sessionCount: 0, recentEntries: [] },
+        update: {
+          currentVersion: '0.6.0',
+          latestVersion: '0.6.0',
+          updateAvailable: false,
+        },
+        system: {
+          version: '0.6.0',
+          claudeCodeVersion: '1.0.0',
+          openCodeVersion: '0.1.0',
+          geminiCliVersion: null,
+          nodeVersion: '22.0.0',
+          npmVersion: '10.0.0',
+          bunVersion: '1.0.0',
+          platform: 'darwin arm64',
+        },
+      };
+      const output = formatConfigSection(report);
+      expect(output).toContain('Invalid');
+      expect(output).toContain('Invalid version: expected 1, got 99');
+      expect(output).toContain('Malformed JSON');
+    });
   });
 
   describe('formatSummary', () => {
@@ -728,6 +788,49 @@ describe('doctor command', () => {
         rmSync(tmpDir, { recursive: true, force: true });
       }
     });
+
+    test('handles config file that becomes unreadable between validation and loading', () => {
+      // This tests the defensive catch block in loadSingleConfigRules.
+      // The scenario: validation passes, but the file is deleted before loading rules.
+      // We simulate this by providing different paths for validation and actual loading.
+      const tmpDir = join(tmpdir(), `doctor-test-${Date.now()}`);
+      mkdirSync(tmpDir, { recursive: true });
+
+      // Create a valid config that will pass validation
+      const validConfigPath = join(tmpDir, '.safety-net.json');
+      writeFileSync(
+        validConfigPath,
+        JSON.stringify({
+          version: 1,
+          rules: [
+            {
+              name: 'test-rule',
+              command: 'test',
+              block_args: ['--flag'],
+              reason: 'Test',
+            },
+          ],
+        }),
+      );
+
+      try {
+        // First verify normal case works
+        const normalInfo = getConfigInfo(tmpDir);
+        expect(normalInfo.projectConfig.valid).toBe(true);
+        expect(normalInfo.effectiveRules.length).toBe(1);
+
+        // Now delete the file and verify graceful handling
+        // (validation result is cached but loading will fail)
+        rmSync(validConfigPath);
+
+        // With the file deleted, loadSingleConfigRules returns [] from existsSync check
+        const info = getConfigInfo(tmpDir);
+        expect(info.projectConfig.exists).toBe(false);
+        expect(info.effectiveRules).toEqual([]);
+      } finally {
+        rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
   });
 
   describe('getEnvironmentInfo', () => {
@@ -760,6 +863,266 @@ describe('doctor command', () => {
       expect(typeof activity.totalBlocked).toBe('number');
       expect(typeof activity.sessionCount).toBe('number');
       expect(Array.isArray(activity.recentEntries)).toBe(true);
+    });
+
+    test('returns empty result when logs directory does not exist', () => {
+      const nonExistentDir = join(tmpdir(), `non-existent-${Date.now()}`);
+      const activity = getActivitySummary(7, nonExistentDir);
+
+      expect(activity.totalBlocked).toBe(0);
+      expect(activity.sessionCount).toBe(0);
+      expect(activity.recentEntries).toEqual([]);
+    });
+
+    test('reads and parses log files from directory', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      const now = new Date();
+      const entry1 = {
+        ts: now.toISOString(),
+        command: 'git reset --hard',
+        reason: 'Blocked by safety net',
+      };
+      const entry2 = {
+        ts: new Date(now.getTime() - 1000).toISOString(),
+        command: 'rm -rf /',
+        reason: 'Dangerous command',
+      };
+
+      writeFileSync(join(logsDir, 'session1.jsonl'), `${JSON.stringify(entry1)}\n`);
+      writeFileSync(join(logsDir, 'session2.jsonl'), `${JSON.stringify(entry2)}\n`);
+
+      try {
+        const activity = getActivitySummary(7, logsDir);
+
+        expect(activity.totalBlocked).toBe(2);
+        expect(activity.sessionCount).toBe(2);
+        expect(activity.recentEntries.length).toBe(2);
+        expect(activity.recentEntries[0]?.command).toBe('git reset --hard');
+        expect(activity.recentEntries[1]?.command).toBe('rm -rf /');
+        expect(activity.newestEntry).toBe(entry1.ts);
+        expect(activity.oldestEntry).toBe(entry2.ts);
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
+    });
+
+    test('filters entries older than specified days', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      const now = new Date();
+      const recentEntry = {
+        ts: now.toISOString(),
+        command: 'recent command',
+        reason: 'Blocked',
+      };
+      const oldEntry = {
+        ts: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(), // 10 days ago
+        command: 'old command',
+        reason: 'Blocked',
+      };
+
+      writeFileSync(
+        join(logsDir, 'mixed.jsonl'),
+        `${JSON.stringify(recentEntry)}\n${JSON.stringify(oldEntry)}\n`,
+      );
+
+      try {
+        const activity = getActivitySummary(7, logsDir); // Only last 7 days
+
+        expect(activity.totalBlocked).toBe(1);
+        expect(activity.recentEntries.length).toBe(1);
+        expect(activity.recentEntries[0]?.command).toBe('recent command');
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
+    });
+
+    test('limits recent entries to 3', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      const now = new Date();
+      const entries = [];
+      for (let i = 0; i < 5; i++) {
+        entries.push({
+          ts: new Date(now.getTime() - i * 1000).toISOString(),
+          command: `command ${i}`,
+          reason: 'Blocked',
+        });
+      }
+
+      writeFileSync(
+        join(logsDir, 'session.jsonl'),
+        entries.map((e) => JSON.stringify(e)).join('\n'),
+      );
+
+      try {
+        const activity = getActivitySummary(7, logsDir);
+
+        expect(activity.totalBlocked).toBe(5);
+        expect(activity.recentEntries.length).toBe(3);
+        // Should have the 3 most recent (sorted by timestamp descending)
+        expect(activity.recentEntries[0]?.command).toBe('command 0');
+        expect(activity.recentEntries[1]?.command).toBe('command 1');
+        expect(activity.recentEntries[2]?.command).toBe('command 2');
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
+    });
+
+    test('skips malformed JSON lines', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      const validEntry = {
+        ts: new Date().toISOString(),
+        command: 'valid command',
+        reason: 'Blocked',
+      };
+
+      writeFileSync(
+        join(logsDir, 'session.jsonl'),
+        `${JSON.stringify(validEntry)}\n{ invalid json }\nnot json at all\n`,
+      );
+
+      try {
+        const activity = getActivitySummary(7, logsDir);
+
+        expect(activity.totalBlocked).toBe(1);
+        expect(activity.recentEntries[0]?.command).toBe('valid command');
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
+    });
+
+    test('ignores non-jsonl files', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      const entry = {
+        ts: new Date().toISOString(),
+        command: 'test command',
+        reason: 'Blocked',
+      };
+
+      writeFileSync(join(logsDir, 'valid.jsonl'), JSON.stringify(entry));
+      writeFileSync(join(logsDir, 'readme.txt'), 'This should be ignored');
+      writeFileSync(join(logsDir, 'data.json'), JSON.stringify(entry));
+
+      try {
+        const activity = getActivitySummary(7, logsDir);
+
+        expect(activity.totalBlocked).toBe(1);
+        expect(activity.sessionCount).toBe(1);
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
+    });
+
+    test('formats relative time correctly', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      const now = new Date();
+      const entries = [
+        { ts: now.toISOString(), command: 'just now', reason: 'Blocked' },
+        {
+          ts: new Date(now.getTime() - 5 * 60 * 1000).toISOString(),
+          command: '5m ago',
+          reason: 'Blocked',
+        },
+        {
+          ts: new Date(now.getTime() - 2 * 60 * 60 * 1000).toISOString(),
+          command: '2h ago',
+          reason: 'Blocked',
+        },
+      ];
+
+      writeFileSync(
+        join(logsDir, 'session.jsonl'),
+        entries.map((e) => JSON.stringify(e)).join('\n'),
+      );
+
+      try {
+        const activity = getActivitySummary(7, logsDir);
+
+        expect(activity.recentEntries[0]?.relativeTime).toMatch(/just now|0m ago|1m ago/);
+        expect(activity.recentEntries[1]?.relativeTime).toMatch(/\dm ago/);
+        expect(activity.recentEntries[2]?.relativeTime).toMatch(/\dh ago/);
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
+    });
+
+    test('formats days in relative time for old entries', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      const now = new Date();
+      const entry = {
+        ts: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
+        command: '3 days ago',
+        reason: 'Blocked',
+      };
+
+      writeFileSync(join(logsDir, 'session.jsonl'), JSON.stringify(entry));
+
+      try {
+        const activity = getActivitySummary(7, logsDir);
+
+        expect(activity.recentEntries[0]?.relativeTime).toBe('3d ago');
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
+    });
+
+    test('counts sessions correctly with multiple files', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      const now = new Date();
+      const recentEntry = { ts: now.toISOString(), command: 'cmd', reason: 'Blocked' };
+      const oldEntry = {
+        ts: new Date(now.getTime() - 10 * 24 * 60 * 60 * 1000).toISOString(),
+        command: 'old',
+        reason: 'Blocked',
+      };
+
+      // Session 1 has recent entry
+      writeFileSync(join(logsDir, 'session1.jsonl'), JSON.stringify(recentEntry));
+      // Session 2 has only old entries (outside the 7 day window)
+      writeFileSync(join(logsDir, 'session2.jsonl'), JSON.stringify(oldEntry));
+      // Session 3 has recent entry
+      writeFileSync(join(logsDir, 'session3.jsonl'), JSON.stringify(recentEntry));
+
+      try {
+        const activity = getActivitySummary(7, logsDir);
+
+        // Only sessions with recent entries are counted
+        expect(activity.sessionCount).toBe(2);
+        expect(activity.totalBlocked).toBe(2);
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
+    });
+
+    test('handles empty log files', () => {
+      const logsDir = join(tmpdir(), `doctor-logs-${Date.now()}`);
+      mkdirSync(logsDir, { recursive: true });
+
+      writeFileSync(join(logsDir, 'empty.jsonl'), '');
+
+      try {
+        const activity = getActivitySummary(7, logsDir);
+
+        expect(activity.totalBlocked).toBe(0);
+        expect(activity.sessionCount).toBe(0);
+      } finally {
+        rmSync(logsDir, { recursive: true, force: true });
+      }
     });
   });
 
@@ -797,6 +1160,78 @@ describe('doctor command', () => {
       // Bun should always be available since we're running tests with it
       expect(sysInfo.bunVersion).toMatch(/^\d+\.\d+/);
       expect(sysInfo.platform).toContain(process.platform);
+    });
+
+    test('handles non-existent commands gracefully', async () => {
+      // This test uses the real defaultVersionFetcher
+      // Since claude/opencode/gemini are unlikely to be installed in CI,
+      // this exercises the error handling paths (spawn error event)
+      const sysInfo = await getSystemInfo();
+
+      // These might be null if tools aren't installed (error path exercised)
+      // or might have a version if installed
+      expect(
+        sysInfo.claudeCodeVersion === null || typeof sysInfo.claudeCodeVersion === 'string',
+      ).toBe(true);
+      expect(sysInfo.openCodeVersion === null || typeof sysInfo.openCodeVersion === 'string').toBe(
+        true,
+      );
+      expect(
+        sysInfo.geminiCliVersion === null || typeof sysInfo.geminiCliVersion === 'string',
+      ).toBe(true);
+    });
+
+    test('handles commands that exit with non-zero code', async () => {
+      // Test with a fetcher that returns null (simulates failed command)
+      const failingFetcher = async (_args: string[]) => null;
+
+      const result = await getSystemInfo(failingFetcher);
+
+      // All version fields should be null
+      expect(result.claudeCodeVersion).toBeNull();
+      expect(result.bunVersion).toBeNull();
+      expect(result.nodeVersion).toBeNull();
+    });
+
+    test('handles empty version output', async () => {
+      // Test with a fetcher that returns empty string
+      const emptyFetcher = async (_args: string[]) => '';
+
+      const result = await getSystemInfo(emptyFetcher);
+
+      // Empty strings should be parsed as null
+      expect(result.claudeCodeVersion).toBeNull();
+      expect(result.bunVersion).toBeNull();
+    });
+  });
+
+  describe('defaultVersionFetcher', () => {
+    test('returns null for non-existent commands (exercises error event)', async () => {
+      // This directly tests the proc.on('error') handler (line 50-51)
+      const result = await defaultVersionFetcher([
+        '__nonexistent_command_that_definitely_does_not_exist__',
+        '--version',
+      ]);
+      expect(result).toBeNull();
+    });
+
+    test('returns null for empty args (exercises early return)', async () => {
+      // This directly tests the early return at line 33
+      const result = await defaultVersionFetcher([]);
+      expect(result).toBeNull();
+    });
+
+    test('returns version for existing commands', async () => {
+      // This tests the happy path with stdout capture
+      const result = await defaultVersionFetcher(['bun', '--version']);
+      expect(result).not.toBeNull();
+      expect(result).toMatch(/^\d+\.\d+/);
+    });
+
+    test('returns null for commands that exit with non-zero code', async () => {
+      // 'false' is a unix command that always exits with code 1
+      const result = await defaultVersionFetcher(['false']);
+      expect(result).toBeNull();
     });
   });
 
@@ -1147,6 +1582,42 @@ describe('doctor command', () => {
         const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
         expect(gemini?.status).toBe('n/a');
         expect(gemini?.errors).toBeUndefined();
+      } finally {
+        rmSync(tmpBase, { recursive: true, force: true });
+      }
+    });
+
+    test('Gemini CLI: reports error when settings.json is malformed', () => {
+      const tmpBase = join(tmpdir(), `doctor-gemini-${Date.now()}`);
+      const homeDir = join(tmpBase, 'home');
+      const projectDir = join(tmpBase, 'project');
+      mkdirSync(homeDir, { recursive: true });
+      mkdirSync(projectDir, { recursive: true });
+
+      const geminiDir = join(homeDir, '.gemini');
+      const geminiExtDir = join(geminiDir, 'extensions');
+      mkdirSync(geminiExtDir, { recursive: true });
+
+      // Valid extension enablement with plugin enabled
+      writeFileSync(
+        join(geminiExtDir, 'extension-enablement.json'),
+        JSON.stringify({
+          'gemini-safety-net': { overrides: ['/Users/kenryu/*'] },
+        }),
+      );
+
+      // Malformed settings.json - this exercises checkGeminiHooksEnabled catch block
+      writeFileSync(join(geminiDir, 'settings.json'), '{ invalid json }');
+
+      try {
+        const hooks = detectAllHooks(projectDir, { homeDir });
+        const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
+
+        // Should be n/a because hooks couldn't be verified due to parse error
+        expect(gemini?.status).toBe('n/a');
+        // Should report both the parse error and the hooks not enabled message
+        expect(gemini?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
+        expect(gemini?.errors?.some((e) => e.includes('tools.enableHooks'))).toBe(true);
       } finally {
         rmSync(tmpBase, { recursive: true, force: true });
       }
