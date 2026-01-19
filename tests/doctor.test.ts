@@ -82,7 +82,7 @@ describe('doctor command', () => {
       const hooks: HookStatus[] = [
         {
           platform: 'claude-code',
-          configured: true,
+          status: 'configured',
           method: 'marketplace plugin',
           selfTest: {
             passed: 5,
@@ -109,27 +109,35 @@ describe('doctor command', () => {
     });
 
     test('formats unconfigured hooks', () => {
-      const hooks: HookStatus[] = [{ platform: 'gemini-cli', configured: false }];
+      const hooks: HookStatus[] = [{ platform: 'gemini-cli', status: 'n/a' }];
 
       const output = formatHooksSection(hooks);
       expect(output).toContain('Gemini CLI');
-      expect(output).toContain('Not configured');
+      expect(output).toContain('N/A');
     });
 
     test('shows error for failed detection', () => {
       const hooks: HookStatus[] = [
-        { platform: 'opencode', configured: false, errors: ['Parse error'] },
+        { platform: 'opencode', status: 'n/a', errors: ['Parse error'] },
       ];
 
       const output = formatHooksSection(hooks);
       expect(output).toContain('Error (OpenCode): Parse error');
     });
 
+    test('formats disabled hooks', () => {
+      const hooks: HookStatus[] = [{ platform: 'claude-code', status: 'disabled' }];
+
+      const output = formatHooksSection(hooks);
+      expect(output).toContain('Claude Code');
+      expect(output).toContain('Disabled');
+    });
+
     test('shows failures below table in red', () => {
       const hooks: HookStatus[] = [
         {
           platform: 'claude-code',
-          configured: true,
+          status: 'configured',
           selfTest: {
             passed: 2,
             failed: 1,
@@ -227,36 +235,117 @@ describe('doctor command', () => {
         ],
       };
       const output = formatActivitySection(activity);
-      expect(output).toContain('3 commands blocked');
+      // Header now shows summary in compact format
+      expect(output).toContain('3 blocked');
       expect(output).toContain('2 sessions');
+      // Table format
+      expect(output).toContain('Time');
+      expect(output).toContain('Command');
       expect(output).toContain('1h ago');
+      expect(output).toContain('git reset --hard');
+      // Should have table borders
+      expect(output).toContain('┌');
+      expect(output).toContain('┘');
     });
   });
 
   describe('formatUpdateSection', () => {
-    test('formats update available', () => {
+    test('formats update available as table', () => {
       const update = {
         currentVersion: '0.6.0',
         latestVersion: '0.7.0',
         updateAvailable: true,
       };
       const output = formatUpdateSection(update);
+      expect(output).toContain('Update Check');
       expect(output).toContain('Update Available');
       expect(output).toContain('0.6.0');
       expect(output).toContain('0.7.0');
       expect(output).toContain('bunx');
       expect(output).toContain('npx');
+      // Should have table borders
+      expect(output).toContain('┌');
+      expect(output).toContain('┘');
+    });
+
+    test('formats up to date as table', () => {
+      const update = {
+        currentVersion: '0.7.0',
+        latestVersion: '0.7.0',
+        updateAvailable: false,
+      };
+      const output = formatUpdateSection(update);
+      expect(output).toContain('Update Check');
+      expect(output).toContain('Up to date');
+      expect(output).toContain('0.7.0');
+      // Should have table borders
+      expect(output).toContain('┌');
+      expect(output).toContain('┘');
+    });
+
+    test('formats skipped update check as table', () => {
+      const update = {
+        currentVersion: '0.6.0',
+        latestVersion: null,
+        updateAvailable: false,
+      };
+      const output = formatUpdateSection(update);
+      expect(output).toContain('Update Check');
+      expect(output).toContain('Skipped');
+      expect(output).toContain('0.6.0');
+      // Should have table borders
+      expect(output).toContain('┌');
+      expect(output).toContain('┘');
+    });
+
+    test('formats error as table', () => {
+      const update = {
+        currentVersion: '0.6.0',
+        latestVersion: null,
+        updateAvailable: false,
+        error: 'Network error',
+      };
+      const output = formatUpdateSection(update);
+      expect(output).toContain('Update Check');
+      expect(output).toContain('Error');
+      expect(output).toContain('0.6.0');
+      expect(output).toContain('Network error');
+      // Should have table borders
+      expect(output).toContain('┌');
+      expect(output).toContain('┘');
     });
   });
 
   describe('formatSystemInfoSection', () => {
-    test('formats system info', async () => {
+    test('formats system info as table', async () => {
       const sysInfo = await getSystemInfo(mockVersionFetcher);
       const output = formatSystemInfoSection(sysInfo);
       expect(output).toContain('System Info');
-      expect(output).toContain('cc-safety-net:');
-      expect(output).toContain('Platform:');
-      expect(output).toContain('Bun:');
+      // Table headers
+      expect(output).toContain('Component');
+      expect(output).toContain('Version');
+      // Component names (without colons since it's a table)
+      expect(output).toContain('cc-safety-net');
+      expect(output).toContain('Platform');
+      expect(output).toContain('Bun');
+      // Should have table borders
+      expect(output).toContain('┌');
+      expect(output).toContain('┘');
+    });
+
+    test('formats null versions as "not found"', () => {
+      const sysInfo = {
+        version: 'dev',
+        claudeCodeVersion: null,
+        openCodeVersion: null,
+        geminiCliVersion: null,
+        nodeVersion: '22.0.0',
+        npmVersion: null,
+        bunVersion: '1.0.0',
+        platform: 'darwin arm64',
+      };
+      const output = formatSystemInfoSection(sysInfo);
+      expect(output).toContain('not found');
     });
   });
 
@@ -300,7 +389,7 @@ describe('doctor command', () => {
       expect(output).toContain('Configuration');
       expect(output).toContain('User');
       expect(output).toContain('Project');
-      expect(output).toContain('Not found');
+      expect(output).toContain('N/A');
     });
 
     test('formats config with shadow warnings', () => {
@@ -354,7 +443,7 @@ describe('doctor command', () => {
   describe('formatSummary', () => {
     test('formats all passed', () => {
       const report: DoctorReport = {
-        hooks: [{ platform: 'claude-code', configured: true }],
+        hooks: [{ platform: 'claude-code', status: 'configured' }],
         userConfig: { path: '', exists: false, valid: false, ruleCount: 0 },
         projectConfig: { path: '', exists: false, valid: false, ruleCount: 0 },
         effectiveRules: [],
@@ -379,7 +468,7 @@ describe('doctor command', () => {
 
     test('formats with warnings', () => {
       const report: DoctorReport = {
-        hooks: [{ platform: 'claude-code', configured: true }],
+        hooks: [{ platform: 'claude-code', status: 'configured' }],
         userConfig: { path: '', exists: false, valid: false, ruleCount: 0 },
         projectConfig: { path: '', exists: false, valid: false, ruleCount: 0 },
         effectiveRules: [],
@@ -774,17 +863,17 @@ describe('doctor command', () => {
         const hooks = detectAllHooks(projectDir, { homeDir });
 
         const claude = hooks.find((hook) => hook.platform === 'claude-code');
-        expect(claude?.configured).toBe(true);
+        expect(claude?.status).toBe('configured');
         expect(claude?.method).toBe('marketplace plugin');
         expect(claude?.selfTest?.failed).toBe(0);
 
         const opencode = hooks.find((hook) => hook.platform === 'opencode');
-        expect(opencode?.configured).toBe(true);
+        expect(opencode?.status).toBe('configured');
         expect(opencode?.method).toBe('plugin array');
         expect(opencode?.selfTest?.total).toBe(3);
 
         const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
-        expect(gemini?.configured).toBe(true);
+        expect(gemini?.status).toBe('configured');
         expect(gemini?.method).toBe('extension plugin');
         expect(gemini?.selfTest?.passed).toBe(gemini?.selfTest?.total);
       } finally {
@@ -792,26 +881,27 @@ describe('doctor command', () => {
       }
     });
 
-    test('detects manual Claude Code hook config', () => {
+    test('Claude Code: disabled when enabledPlugins value is false', () => {
       const tmpBase = join(tmpdir(), `doctor-hooks-${Date.now()}`);
       const homeDir = join(tmpBase, 'home');
       const projectDir = join(tmpBase, 'project');
       mkdirSync(homeDir, { recursive: true });
       mkdirSync(projectDir, { recursive: true });
 
+      const claudeDir = join(homeDir, '.claude');
+      mkdirSync(claudeDir, { recursive: true });
       writeFileSync(
-        join(homeDir, '.claude.json'),
+        join(claudeDir, 'settings.json'),
         JSON.stringify({
-          hooks: { PreToolUse: [{ command: 'bunx cc-safety-net@latest doctor' }] },
+          enabledPlugins: { 'safety-net@cc-marketplace': false },
         }),
       );
 
       try {
         const hooks = detectAllHooks(projectDir, { homeDir });
         const claude = hooks.find((hook) => hook.platform === 'claude-code');
-        expect(claude?.configured).toBe(true);
-        expect(claude?.method).toBe('manual hooks config');
-        expect(claude?.selfTest?.total).toBe(3);
+        expect(claude?.status).toBe('disabled');
+        expect(claude?.method).toBe('marketplace plugin');
       } finally {
         rmSync(tmpBase, { recursive: true, force: true });
       }
@@ -841,49 +931,39 @@ describe('doctor command', () => {
         const hooks = detectAllHooks(projectDir, { homeDir });
 
         const claude = hooks.find((hook) => hook.platform === 'claude-code');
-        expect(claude?.configured).toBe(false);
+        expect(claude?.status).toBe('n/a');
         expect(claude?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
 
         const opencode = hooks.find((hook) => hook.platform === 'opencode');
-        expect(opencode?.configured).toBe(false);
+        expect(opencode?.status).toBe('n/a');
         expect(opencode?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
 
         const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
-        expect(gemini?.configured).toBe(false);
+        expect(gemini?.status).toBe('n/a');
         expect(gemini?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
       } finally {
         rmSync(tmpBase, { recursive: true, force: true });
       }
     });
 
-    test('continues checking fallback configs after parse errors (Claude Code)', () => {
+    test('Claude Code: returns n/a with error when settings.json is invalid', () => {
       const tmpBase = join(tmpdir(), `doctor-hooks-${Date.now()}`);
       const homeDir = join(tmpBase, 'home');
       const projectDir = join(tmpBase, 'project');
       mkdirSync(homeDir, { recursive: true });
       mkdirSync(projectDir, { recursive: true });
 
-      // Primary config (settings.json) is broken
+      // settings.json is broken
       const claudeDir = join(homeDir, '.claude');
       mkdirSync(claudeDir, { recursive: true });
       writeFileSync(join(claudeDir, 'settings.json'), '{ invalid json }');
-
-      // Secondary config (.claude.json) is valid and has hook configured
-      writeFileSync(
-        join(homeDir, '.claude.json'),
-        JSON.stringify({
-          hooks: { PreToolUse: [{ command: 'cc-safety-net' }] },
-        }),
-      );
 
       try {
         const hooks = detectAllHooks(projectDir, { homeDir });
         const claude = hooks.find((hook) => hook.platform === 'claude-code');
 
-        // Should find the hook in secondary config despite primary being broken
-        expect(claude?.configured).toBe(true);
-        expect(claude?.method).toBe('manual hooks config');
-        // Should still report the error from the broken primary config
+        // Should return n/a status with parse error
+        expect(claude?.status).toBe('n/a');
         expect(claude?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
       } finally {
         rmSync(tmpBase, { recursive: true, force: true });
@@ -917,7 +997,7 @@ describe('doctor command', () => {
         const opencode = hooks.find((hook) => hook.platform === 'opencode');
 
         // Should find the plugin in secondary config despite primary being broken
-        expect(opencode?.configured).toBe(true);
+        expect(opencode?.status).toBe('configured');
         expect(opencode?.method).toBe('plugin array');
         // Should still report the error from the broken primary config
         expect(opencode?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
@@ -926,7 +1006,7 @@ describe('doctor command', () => {
       }
     });
 
-    test('Gemini CLI: not configured when overrides is empty', () => {
+    test('Gemini CLI: disabled when overrides is empty', () => {
       const tmpBase = join(tmpdir(), `doctor-gemini-${Date.now()}`);
       const homeDir = join(tmpBase, 'home');
       const projectDir = join(tmpBase, 'project');
@@ -945,7 +1025,7 @@ describe('doctor command', () => {
       try {
         const hooks = detectAllHooks(projectDir, { homeDir });
         const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
-        expect(gemini?.configured).toBe(false);
+        expect(gemini?.status).toBe('disabled');
         expect(gemini?.errors?.some((e) => e.includes('no enabled workspace overrides'))).toBe(
           true,
         );
@@ -954,7 +1034,7 @@ describe('doctor command', () => {
       }
     });
 
-    test('Gemini CLI: not configured when all overrides are negated', () => {
+    test('Gemini CLI: disabled when all overrides are negated', () => {
       const tmpBase = join(tmpdir(), `doctor-gemini-${Date.now()}`);
       const homeDir = join(tmpBase, 'home');
       const projectDir = join(tmpBase, 'project');
@@ -973,7 +1053,7 @@ describe('doctor command', () => {
       try {
         const hooks = detectAllHooks(projectDir, { homeDir });
         const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
-        expect(gemini?.configured).toBe(false);
+        expect(gemini?.status).toBe('disabled');
         expect(gemini?.errors?.some((e) => e.includes('no enabled workspace overrides'))).toBe(
           true,
         );
@@ -1003,7 +1083,7 @@ describe('doctor command', () => {
       try {
         const hooks = detectAllHooks(projectDir, { homeDir });
         const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
-        expect(gemini?.configured).toBe(false);
+        expect(gemini?.status).toBe('n/a');
         expect(gemini?.errors?.some((e) => e.includes('tools.enableHooks'))).toBe(true);
       } finally {
         rmSync(tmpBase, { recursive: true, force: true });
@@ -1039,7 +1119,7 @@ describe('doctor command', () => {
       try {
         const hooks = detectAllHooks(projectDir, { homeDir });
         const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
-        expect(gemini?.configured).toBe(true);
+        expect(gemini?.status).toBe('configured');
         expect(gemini?.method).toBe('extension plugin');
       } finally {
         rmSync(tmpBase, { recursive: true, force: true });
@@ -1065,7 +1145,7 @@ describe('doctor command', () => {
       try {
         const hooks = detectAllHooks(projectDir, { homeDir });
         const gemini = hooks.find((hook) => hook.platform === 'gemini-cli');
-        expect(gemini?.configured).toBe(false);
+        expect(gemini?.status).toBe('n/a');
         expect(gemini?.errors).toBeUndefined();
       } finally {
         rmSync(tmpBase, { recursive: true, force: true });

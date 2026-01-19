@@ -30,10 +30,13 @@ export interface SelfTestSummary {
   results: SelfTestResult[];
 }
 
+/** Hook configuration status */
+export type HookConfigStatus = 'configured' | 'n/a' | 'disabled';
+
 /** Hook detection result with integrated self-test */
 export interface HookStatus {
   platform: HookPlatform;
-  configured: boolean;
+  status: HookConfigStatus;
   method?: string;
   configPath?: string;
   errors?: string[];

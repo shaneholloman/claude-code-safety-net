@@ -60,7 +60,7 @@ export function formatHooksSection(hooks: HookStatus[]): string {
 
     if (hook.errors && hook.errors.length > 0) {
       for (const err of hook.errors) {
-        if (hook.configured) {
+        if (hook.status === 'configured') {
           warnings.push({ platform: platformName, message: err });
         } else {
           errors.push({ platform: platformName, message: err });
@@ -93,40 +93,60 @@ export function formatHooksSection(hooks: HookStatus[]): string {
 }
 
 /**
- * Format hooks as an ASCII table.
+ * Format hooks as an ASCII table with colored status.
  */
 function formatHooksTable(hooks: HookStatus[]): string {
   const headers = ['Platform', 'Status', 'Tests'];
-  const rows = hooks.map((h) => {
+
+  // Helper to get status display text and color
+  const getStatusDisplay = (h: HookStatus): { text: string; colored: string } => {
+    switch (h.status) {
+      case 'configured':
+        return { text: 'Configured', colored: colors.green('Configured') };
+      case 'disabled':
+        return { text: 'Disabled', colored: colors.yellow('Disabled') };
+      case 'n/a':
+        return { text: 'N/A', colored: colors.dim('N/A') };
+    }
+  };
+
+  // Build rows with both colored and raw text
+  const rowData = hooks.map((h) => {
     const platformName = PLATFORM_NAMES[h.platform] ?? h.platform;
-    const statusText = h.configured ? 'Configured' : 'Not configured';
+    const statusDisplay = getStatusDisplay(h);
     let testsText = '-';
-    if (h.configured && h.selfTest) {
+    if (h.status === 'configured' && h.selfTest) {
       const label = h.selfTest.failed > 0 ? 'FAIL' : 'OK';
       testsText = `${h.selfTest.passed}/${h.selfTest.total} ${label}`;
     }
-    return [platformName, statusText, testsText];
+    return {
+      colored: [platformName, statusDisplay.colored, testsText],
+      raw: [platformName, statusDisplay.text, testsText],
+    };
   });
 
-  // Calculate column widths
+  const rows = rowData.map((r) => r.colored);
+  const rawRows = rowData.map((r) => r.raw);
+
+  // Calculate column widths (using raw text without ANSI codes for width calc)
   const colWidths = headers.map((h, i) => {
-    const maxDataWidth = Math.max(...rows.map((r) => r[i]?.length ?? 0));
+    const maxDataWidth = Math.max(...rawRows.map((r) => r[i]?.length ?? 0));
     return Math.max(h.length, maxDataWidth);
   });
 
-  const pad = (s: string, w: number) => s.padEnd(w);
+  const pad = (s: string, w: number, raw: string) => s + ' '.repeat(Math.max(0, w - raw.length));
 
   const line = (char: string, corners: [string, string, string]) =>
     corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
 
-  const formatRow = (cells: string[]) =>
-    `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0)).join(' │ ')} │`;
+  const formatRow = (cells: string[], rawCells: string[]) =>
+    `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0, rawCells[i] ?? '')).join(' │ ')} │`;
 
   const tableLines = [
     `   ${line('─', ['┌', '┬', '┐'])}`,
-    `   ${formatRow(headers)}`,
+    `   ${formatRow(headers, headers)}`,
     `   ${line('─', ['├', '┼', '┤'])}`,
-    ...rows.map((r) => `   ${formatRow(r)}`),
+    ...rows.map((r, i) => `   ${formatRow(r, rawRows[i] ?? [])}`),
     `   ${line('─', ['└', '┴', '┘'])}`,
   ];
 
@@ -204,44 +224,54 @@ export function formatConfigSection(report: DoctorReport): string {
 }
 
 /**
- * Format config sources as an ASCII table.
+ * Format config sources as an ASCII table with colored status.
  */
 function formatConfigTable(userConfig: ConfigSourceInfo, projectConfig: ConfigSourceInfo): string {
   const headers = ['Scope', 'Status'];
 
-  const getStatus = (config: ConfigSourceInfo): string => {
-    if (!config.exists) return 'Not found';
+  const getStatusDisplay = (config: ConfigSourceInfo): { text: string; colored: string } => {
+    if (!config.exists) {
+      return { text: 'N/A', colored: colors.dim('N/A') };
+    }
     if (!config.valid) {
       const errMsg = config.errors?.[0] ?? 'unknown error';
-      return `Invalid (${errMsg})`;
+      const text = `Invalid (${errMsg})`;
+      return { text, colored: colors.red(text) };
     }
-    return 'Configured';
+    return { text: 'Configured', colored: colors.green('Configured') };
   };
 
+  const userStatus = getStatusDisplay(userConfig);
+  const projectStatus = getStatusDisplay(projectConfig);
+
   const rows = [
-    ['User', getStatus(userConfig)],
-    ['Project', getStatus(projectConfig)],
+    ['User', userStatus.colored],
+    ['Project', projectStatus.colored],
+  ];
+  const rawRows = [
+    ['User', userStatus.text],
+    ['Project', projectStatus.text],
   ];
 
-  // Calculate column widths
+  // Calculate column widths (using raw text without ANSI codes for width calc)
   const colWidths = headers.map((h, i) => {
-    const maxDataWidth = Math.max(...rows.map((r) => r[i]?.length ?? 0));
+    const maxDataWidth = Math.max(...rawRows.map((r) => r[i]?.length ?? 0));
     return Math.max(h.length, maxDataWidth);
   });
 
-  const pad = (s: string, w: number) => s.padEnd(w);
+  const pad = (s: string, w: number, raw: string) => s + ' '.repeat(Math.max(0, w - raw.length));
 
   const line = (char: string, corners: [string, string, string]) =>
     corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
 
-  const formatRow = (cells: string[]) =>
-    `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0)).join(' │ ')} │`;
+  const formatRow = (cells: string[], rawCells: string[]) =>
+    `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0, rawCells[i] ?? '')).join(' │ ')} │`;
 
   const tableLines = [
     `   ${line('─', ['┌', '┬', '┐'])}`,
-    `   ${formatRow(headers)}`,
+    `   ${formatRow(headers, headers)}`,
     `   ${line('─', ['├', '┼', '┤'])}`,
-    ...rows.map((r) => `   ${formatRow(r)}`),
+    ...rows.map((r, i) => `   ${formatRow(r, rawRows[i] ?? [])}`),
     `   ${line('─', ['└', '┴', '┘'])}`,
   ];
 
@@ -296,77 +326,250 @@ function formatEnvironmentTable(envVars: EnvVarInfo[]): string {
 }
 
 /**
- * Format the activity section.
+ * Format the activity section as a table.
  */
 export function formatActivitySection(activity: ActivitySummary): string {
   const lines: string[] = [];
 
-  lines.push('Recent Activity');
-
+  // Header with summary
   if (activity.totalBlocked === 0) {
+    lines.push('Recent Activity');
     lines.push('   No blocked commands in the last 7 days');
     lines.push('   Tip: This is normal for new installations');
   } else {
     lines.push(
-      `   ${activity.totalBlocked} commands blocked across ${activity.sessionCount} sessions`,
+      `Recent Activity (${activity.totalBlocked} blocked / ${activity.sessionCount} sessions)`,
     );
-    lines.push('');
-    lines.push('   Latest:');
-    for (const entry of activity.recentEntries) {
-      const cmd = entry.command.length > 40 ? `${entry.command.slice(0, 37)}...` : entry.command;
-      lines.push(`   • ${entry.relativeTime.padEnd(8)} ${cmd}`);
-    }
+    lines.push(formatActivityTable(activity.recentEntries));
   }
 
   return lines.join('\n');
 }
 
 /**
- * Format the update section.
+ * Format recent activity entries as an ASCII table.
+ */
+function formatActivityTable(entries: Array<{ relativeTime: string; command: string }>): string {
+  const headers = ['Time', 'Command'];
+
+  // Build rows - truncate long commands
+  const rows = entries.map((e) => {
+    const cmd = e.command.length > 40 ? `${e.command.slice(0, 37)}...` : e.command;
+    return [e.relativeTime, cmd];
+  });
+
+  // Calculate column widths
+  const colWidths = headers.map((h, i) => {
+    const maxDataWidth = Math.max(...rows.map((r) => r[i]?.length ?? 0));
+    return Math.max(h.length, maxDataWidth);
+  });
+
+  const pad = (s: string, w: number) => s.padEnd(w);
+
+  const line = (char: string, corners: [string, string, string]) =>
+    corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
+
+  const formatRow = (cells: string[]) =>
+    `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0)).join(' │ ')} │`;
+
+  const tableLines = [
+    `   ${line('─', ['┌', '┬', '┐'])}`,
+    `   ${formatRow(headers)}`,
+    `   ${line('─', ['├', '┼', '┤'])}`,
+    ...rows.map((r) => `   ${formatRow(r)}`),
+    `   ${line('─', ['└', '┴', '┘'])}`,
+  ];
+
+  return tableLines.join('\n');
+}
+
+/**
+ * Format the update section as a table.
  */
 export function formatUpdateSection(update: UpdateInfo): string {
   const lines: string[] = [];
-  lines.push('Update Available');
-  lines.push(`   Installed: ${update.currentVersion}`);
-  lines.push(`   Latest:    ${update.latestVersion}`);
-  lines.push('');
-  lines.push('   Run: bunx cc-safety-net@latest doctor');
-  lines.push('   Or:  npx cc-safety-net@latest doctor');
+  lines.push('Update Check');
+
+  // Build table rows based on state
+  const rowData: Array<{ label: string; value: string; rawValue: string }> = [];
+
+  // Check if update check was skipped (latestVersion is null and no error)
+  if (update.latestVersion === null && !update.error) {
+    rowData.push({
+      label: 'Status',
+      value: colors.dim('Skipped'),
+      rawValue: 'Skipped',
+    });
+    rowData.push({
+      label: 'Installed',
+      value: update.currentVersion,
+      rawValue: update.currentVersion,
+    });
+    lines.push(formatUpdateTable(rowData));
+    return lines.join('\n');
+  }
+
+  // Check if there was an error
+  if (update.error) {
+    rowData.push({
+      label: 'Status',
+      value: `${colors.yellow('⚠')} Error`,
+      rawValue: '⚠ Error',
+    });
+    rowData.push({
+      label: 'Installed',
+      value: update.currentVersion,
+      rawValue: update.currentVersion,
+    });
+    rowData.push({
+      label: 'Error',
+      value: colors.dim(update.error),
+      rawValue: update.error,
+    });
+    lines.push(formatUpdateTable(rowData));
+    return lines.join('\n');
+  }
+
+  // Check if update is available
+  if (update.updateAvailable) {
+    rowData.push({
+      label: 'Status',
+      value: `${colors.yellow('⚠')} Update Available`,
+      rawValue: '⚠ Update Available',
+    });
+    rowData.push({
+      label: 'Current',
+      value: update.currentVersion,
+      rawValue: update.currentVersion,
+    });
+    rowData.push({
+      label: 'Latest',
+      value: colors.green(update.latestVersion ?? ''),
+      rawValue: update.latestVersion ?? '',
+    });
+    lines.push(formatUpdateTable(rowData));
+    lines.push('');
+    lines.push('   Run: bunx cc-safety-net@latest doctor');
+    lines.push('   Or:  npx cc-safety-net@latest doctor');
+    return lines.join('\n');
+  }
+
+  // Up to date
+  rowData.push({
+    label: 'Status',
+    value: `${colors.green('✓')} Up to date`,
+    rawValue: '✓ Up to date',
+  });
+  rowData.push({
+    label: 'Version',
+    value: update.currentVersion,
+    rawValue: update.currentVersion,
+  });
+  lines.push(formatUpdateTable(rowData));
+  return lines.join('\n');
+}
+
+/**
+ * Format update info as an ASCII table.
+ */
+function formatUpdateTable(
+  rowData: Array<{ label: string; value: string; rawValue: string }>,
+): string {
+  const rows = rowData.map((r) => [r.label, r.value]);
+  const rawRows = rowData.map((r) => [r.label, r.rawValue]);
+
+  // Calculate column widths (using raw text without ANSI codes for width calc)
+  const colWidths = [0, 1].map((i) => {
+    return Math.max(...rawRows.map((r) => r[i]?.length ?? 0));
+  });
+
+  const pad = (s: string, w: number, raw: string) => s + ' '.repeat(Math.max(0, w - raw.length));
+
+  const line = (char: string, corners: [string, string, string]) =>
+    corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
+
+  const formatRow = (cells: string[], rawCells: string[]) =>
+    `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0, rawCells[i] ?? '')).join(' │ ')} │`;
+
+  const tableLines = [
+    `   ${line('─', ['┌', '┬', '┐'])}`,
+    ...rows.map((r, i) => `   ${formatRow(r, rawRows[i] ?? [])}`),
+    `   ${line('─', ['└', '┴', '┘'])}`,
+  ];
+
+  return tableLines.join('\n');
+}
+
+/**
+ * Format the system info section as a table.
+ */
+export function formatSystemInfoSection(system: SystemInfo): string {
+  const lines: string[] = [];
+  lines.push('System Info');
+  lines.push(formatSystemInfoTable(system));
 
   return lines.join('\n');
 }
 
 /**
- * Format the system info section.
+ * Format system info as an ASCII table.
  */
-export function formatSystemInfoSection(system: SystemInfo): string {
-  const lines: string[] = [];
-  lines.push('System Info');
+function formatSystemInfoTable(system: SystemInfo): string {
+  const headers = ['Component', 'Version'];
 
-  // Define label width for alignment (longest label is "cc-safety-net:" = 14 chars)
-  const labelWidth = 17;
-  const formatLine = (label: string, value: string | null): string => {
-    const displayValue = value ?? 'not found';
-    return `   ${label.padEnd(labelWidth)}${displayValue}`;
+  const formatValue = (value: string | null): string => {
+    if (value === null) return colors.dim('not found');
+    return value;
   };
 
-  lines.push(formatLine('cc-safety-net:', system.version));
-  lines.push(formatLine('Claude Code:', system.claudeCodeVersion));
-  lines.push(formatLine('OpenCode:', system.openCodeVersion));
-  lines.push(formatLine('Gemini CLI:', system.geminiCliVersion));
-  lines.push(formatLine('Node.js:', system.nodeVersion));
-  lines.push(formatLine('npm:', system.npmVersion));
-  lines.push(formatLine('Bun:', system.bunVersion));
-  lines.push(formatLine('Platform:', system.platform));
+  const rawValue = (value: string | null): string => {
+    return value ?? 'not found';
+  };
 
-  return lines.join('\n');
+  const rowData = [
+    { label: 'cc-safety-net', value: system.version },
+    { label: 'Claude Code', value: system.claudeCodeVersion },
+    { label: 'OpenCode', value: system.openCodeVersion },
+    { label: 'Gemini CLI', value: system.geminiCliVersion },
+    { label: 'Node.js', value: system.nodeVersion },
+    { label: 'npm', value: system.npmVersion },
+    { label: 'Bun', value: system.bunVersion },
+    { label: 'Platform', value: system.platform },
+  ];
+
+  const rows = rowData.map((r) => [r.label, formatValue(r.value)]);
+  const rawRows = rowData.map((r) => [r.label, rawValue(r.value)]);
+
+  // Calculate column widths (using raw text without ANSI codes for width calc)
+  const colWidths = headers.map((h, i) => {
+    const maxDataWidth = Math.max(...rawRows.map((r) => r[i]?.length ?? 0));
+    return Math.max(h.length, maxDataWidth);
+  });
+
+  const pad = (s: string, w: number, raw: string) => s + ' '.repeat(Math.max(0, w - raw.length));
+
+  const line = (char: string, corners: [string, string, string]) =>
+    corners[0] + colWidths.map((w) => char.repeat(w + 2)).join(corners[1]) + corners[2];
+
+  const formatRow = (cells: string[], rawCells: string[]) =>
+    `│ ${cells.map((c, i) => pad(c, colWidths[i] ?? 0, rawCells[i] ?? '')).join(' │ ')} │`;
+
+  const tableLines = [
+    `   ${line('─', ['┌', '┬', '┐'])}`,
+    `   ${formatRow(headers, headers)}`,
+    `   ${line('─', ['├', '┼', '┤'])}`,
+    ...rows.map((r, i) => `   ${formatRow(r, rawRows[i] ?? [])}`),
+    `   ${line('─', ['└', '┴', '┘'])}`,
+  ];
+
+  return tableLines.join('\n');
 }
 
 /**
  * Format the summary line.
  */
 export function formatSummary(report: DoctorReport): string {
-  const hooksFailed = report.hooks.every((h) => !h.configured);
+  const hooksFailed = report.hooks.every((h) => h.status !== 'configured');
   const selfTestFailed = report.hooks.some((h) => h.selfTest && h.selfTest.failed > 0);
   const configFailed =
     (report.userConfig.errors?.length ?? 0) > 0 || (report.projectConfig.errors?.length ?? 0) > 0;

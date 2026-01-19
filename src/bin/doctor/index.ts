@@ -58,7 +58,7 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<number> {
 
   // Exit code
   const hasFailure =
-    hooks.every((h) => !h.configured) ||
+    hooks.every((h) => h.status !== 'configured') ||
     hooks.some((h) => h.selfTest && h.selfTest.failed > 0) ||
     (configInfo.userConfig.exists && !configInfo.userConfig.valid) ||
     (configInfo.projectConfig.exists && !configInfo.projectConfig.valid);
@@ -84,14 +84,12 @@ function printReport(report: DoctorReport): void {
   console.log(formatActivitySection(report.activity));
   console.log();
 
-  // 5. Update (if available)
-  if (report.update.updateAvailable) {
-    console.log(formatUpdateSection(report.update));
-    console.log();
-  }
-
-  // 6. System Info
+  // 5. System Info
   console.log(formatSystemInfoSection(report.system));
+  console.log();
+
+  // 6. Update Check (moved to end, before summary)
+  console.log(formatUpdateSection(report.update));
 
   // Summary
   console.log(formatSummary(report));

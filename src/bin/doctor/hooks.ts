@@ -186,64 +186,49 @@ export function stripJsonComments(content: string): string {
 function detectClaudeCode(homeDir: string): HookStatus {
   const errors: string[] = [];
   const settingsPath = join(homeDir, '.claude', 'settings.json');
+  const pluginKey = 'safety-net@cc-marketplace';
 
-  // Check marketplace plugin
+  // Check marketplace plugin in settings.json
   if (existsSync(settingsPath)) {
     try {
       const settings = JSON.parse(readFileSync(settingsPath, 'utf-8')) as {
         enabledPlugins?: Record<string, boolean>;
       };
-      const pluginKey = 'safety-net@cc-marketplace';
-      if (settings.enabledPlugins?.[pluginKey] === true) {
+      const pluginValue = settings.enabledPlugins?.[pluginKey];
+
+      if (pluginValue === true) {
         return {
           platform: 'claude-code',
-          configured: true,
+          status: 'configured',
           method: 'marketplace plugin',
           configPath: settingsPath,
           selfTest: runSelfTest(),
         };
       }
-    } catch (e) {
-      errors.push(`Failed to parse settings.json: ${e instanceof Error ? e.message : String(e)}`);
-      // Continue to check secondary config
-    }
-  }
 
-  // Check manual hook config in ~/.claude.json
-  const claudeJsonPath = join(homeDir, '.claude.json');
-  if (existsSync(claudeJsonPath)) {
-    try {
-      const config = JSON.parse(readFileSync(claudeJsonPath, 'utf-8')) as {
-        hooks?: {
-          PreToolUse?: Array<{ command?: string }>;
-        };
-      };
-      const hooks = config.hooks?.PreToolUse ?? [];
-      const hasSafetyNet = hooks.some((h) => h.command?.includes('cc-safety-net'));
-      if (hasSafetyNet) {
+      if (pluginValue === false) {
         return {
           platform: 'claude-code',
-          configured: true,
-          method: 'manual hooks config',
-          configPath: claudeJsonPath,
-          selfTest: runSelfTest(),
-          errors: errors.length > 0 ? errors : undefined,
+          status: 'disabled',
+          method: 'marketplace plugin',
+          configPath: settingsPath,
         };
       }
     } catch (e) {
-      errors.push(`Failed to parse .claude.json: ${e instanceof Error ? e.message : String(e)}`);
+      errors.push(`Failed to parse settings.json: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
   return {
     platform: 'claude-code',
-    configured: false,
+    status: 'n/a',
     errors: errors.length > 0 ? errors : undefined,
   };
 }
 
 /**
  * Detect OpenCode plugin configuration.
+ * OpenCode only has 'configured' or 'n/a' status (no disabled state).
  */
 function detectOpenCode(homeDir: string): HookStatus {
   const errors: string[] = [];
@@ -264,7 +249,7 @@ function detectOpenCode(homeDir: string): HookStatus {
         if (hasSafetyNet) {
           return {
             platform: 'opencode',
-            configured: true,
+            status: 'configured',
             method: 'plugin array',
             configPath,
             selfTest: runSelfTest(),
@@ -280,7 +265,7 @@ function detectOpenCode(homeDir: string): HookStatus {
 
   return {
     platform: 'opencode',
-    configured: false,
+    status: 'n/a',
     errors: errors.length > 0 ? errors : undefined,
   };
 }
@@ -328,6 +313,11 @@ function checkGeminiHooksEnabled(
  *    - At least one override must NOT start with "!" (not negated)
  * 2. ~/.gemini/settings.json or .gemini/settings.json for hooks being enabled
  *    - tools.enableHooks must be true
+ *
+ * Status meanings:
+ * - 'configured': Plugin installed, has enabled overrides, and hooks enabled
+ * - 'disabled': Plugin installed but all overrides are negated (start with '!')
+ * - 'n/a': Plugin not installed, or installed but hooks not enabled
  */
 function detectGeminiCLI(homeDir: string, cwd: string): HookStatus {
   const errors: string[] = [];
@@ -336,7 +326,7 @@ function detectGeminiCLI(homeDir: string, cwd: string): HookStatus {
   const extensionPath = join(homeDir, '.gemini', 'extensions', 'extension-enablement.json');
 
   if (!existsSync(extensionPath)) {
-    return { platform: 'gemini-cli', configured: false };
+    return { platform: 'gemini-cli', status: 'n/a' };
   }
 
   let isInstalled = false;
@@ -362,11 +352,24 @@ function detectGeminiCLI(homeDir: string, cwd: string): HookStatus {
     );
   }
 
+  // Plugin not found
   if (!isInstalled) {
     return {
       platform: 'gemini-cli',
-      configured: false,
+      status: 'n/a',
       errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
+  // Plugin installed but all overrides are negated (disabled)
+  if (!isEnabled) {
+    errors.push('Plugin is installed but disabled (no enabled workspace overrides)');
+    return {
+      platform: 'gemini-cli',
+      status: 'disabled',
+      method: 'extension plugin',
+      configPath: extensionPath,
+      errors,
     };
   }
 
@@ -374,12 +377,10 @@ function detectGeminiCLI(homeDir: string, cwd: string): HookStatus {
   const hooksCheck = checkGeminiHooksEnabled(homeDir, cwd, errors);
 
   // Plugin is fully configured if installed, enabled, and hooks are enabled
-  const configured = isInstalled && isEnabled && hooksCheck.enabled;
-
-  if (configured) {
+  if (hooksCheck.enabled) {
     return {
       platform: 'gemini-cli',
-      configured: true,
+      status: 'configured',
       method: 'extension plugin',
       configPath: extensionPath,
       selfTest: runSelfTest(),
@@ -387,18 +388,14 @@ function detectGeminiCLI(homeDir: string, cwd: string): HookStatus {
     };
   }
 
-  // Provide helpful error messages for partial configuration
-  if (isInstalled && !isEnabled) {
-    errors.push('Plugin is installed but disabled (no enabled workspace overrides)');
-  }
-  if (isInstalled && isEnabled && !hooksCheck.enabled) {
-    errors.push('Hooks are not enabled (set tools.enableHooks: true in settings.json)');
-  }
-
+  // Plugin enabled but hooks not enabled in settings
+  errors.push('Hooks are not enabled (set tools.enableHooks: true in settings.json)');
   return {
     platform: 'gemini-cli',
-    configured: false,
-    errors: errors.length > 0 ? errors : undefined,
+    status: 'n/a',
+    method: 'extension plugin',
+    configPath: extensionPath,
+    errors,
   };
 }
 
