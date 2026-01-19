@@ -31,7 +31,7 @@ export interface HookStatus {
     configured: boolean;
     method?: string;
     configPath?: string;
-    error?: string;
+    errors?: string[];
     selfTest?: SelfTestSummary;
 }
 /** Config source info */
@@ -77,15 +77,6 @@ export interface ActivitySummary {
     oldestEntry?: string;
     newestEntry?: string;
 }
-/** Directory permission info */
-export interface DirPermissions {
-    path: string;
-    exists: boolean;
-    readable: boolean;
-    writable: boolean;
-    fileCount?: number;
-    error?: string;
-}
 /** Update check result */
 export interface UpdateInfo {
     currentVersion: string;
@@ -95,12 +86,22 @@ export interface UpdateInfo {
 }
 /** System information */
 export interface SystemInfo {
+    /** cc-safety-net version */
     version: string;
-    runtime: string;
+    /** Claude Code version (from `claude --version`) */
+    claudeCodeVersion: string | null;
+    /** OpenCode version (from `opencode --version`) */
+    openCodeVersion: string | null;
+    /** Gemini CLI version (from `gemini --version`) */
+    geminiCliVersion: string | null;
+    /** Node.js version (from `node --version`) */
+    nodeVersion: string | null;
+    /** npm version (from `npm --version`) */
+    npmVersion: string | null;
+    /** Bun version (from `bun --version`) */
+    bunVersion: string | null;
+    /** Platform (e.g., "darwin arm64") */
     platform: string;
-    shell: string | null;
-    nodeVersion: string;
-    homeDir: string;
 }
 /** Full doctor report */
 export interface DoctorReport {
@@ -111,10 +112,6 @@ export interface DoctorReport {
     shadowedRules: ShadowedRule[];
     environment: EnvVarInfo[];
     activity: ActivitySummary;
-    permissions: {
-        configDir: DirPermissions;
-        logDir: DirPermissions;
-    };
     update: UpdateInfo;
     system: SystemInfo;
 }

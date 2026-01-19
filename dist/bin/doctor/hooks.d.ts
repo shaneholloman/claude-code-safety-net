@@ -16,5 +16,5 @@ export declare function stripJsonComments(content: string): string;
 /**
  * Detect all hooks and run self-tests for configured ones.
  */
-export declare function detectAllHooks(_cwd: string, options?: HookDetectOptions): HookStatus[];
+export declare function detectAllHooks(cwd: string, options?: HookDetectOptions): HookStatus[];
 export {};

@@ -1,10 +1,9 @@
 /**
  * Output formatting utilities for the doctor command.
  */
-import type { ActivitySummary, DirPermissions, DoctorReport, EffectiveRule, EnvVarInfo, HookStatus, SystemInfo, UpdateInfo } from './types.ts';
-export declare function formatHeader(): string;
+import type { ActivitySummary, DoctorReport, EffectiveRule, EnvVarInfo, HookStatus, SystemInfo, UpdateInfo } from './types.ts';
 /**
- * Format the hooks section with integrated self-test results.
+ * Format the hooks section as a table with failure details below.
  */
 export declare function formatHooksSection(hooks: HookStatus[]): string;
 /**
@@ -13,24 +12,17 @@ export declare function formatHooksSection(hooks: HookStatus[]): string;
  */
 export declare function formatRulesTable(rules: EffectiveRule[]): string;
 /**
- * Format the config section with rules table.
+ * Format the config section with tables.
  */
 export declare function formatConfigSection(report: DoctorReport): string;
 /**
- * Format the environment section.
+ * Format the environment section as a table with status icons.
  */
 export declare function formatEnvironmentSection(envVars: EnvVarInfo[]): string;
 /**
  * Format the activity section.
  */
 export declare function formatActivitySection(activity: ActivitySummary): string;
-/**
- * Format the permissions section.
- */
-export declare function formatPermissionsSection(permissions: {
-    configDir: DirPermissions;
-    logDir: DirPermissions;
-}): string;
 /**
  * Format the update section.
  */
