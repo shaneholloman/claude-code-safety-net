@@ -56,6 +56,13 @@ async function main(): Promise<void> {
 
   await Bun.write(SCHEMA_OUTPUT_PATH, `${JSON.stringify(finalSchema, null, 2)}\n`);
 
+  // Format with Biome to ensure consistent formatting with the linter
+  const result = Bun.spawnSync(['bunx', 'biome', 'format', '--write', SCHEMA_OUTPUT_PATH]);
+  if (result.exitCode !== 0) {
+    console.error('Failed to format schema:', result.stderr.toString());
+    process.exit(1);
+  }
+
   console.log(`✓ JSON Schema generated: ${SCHEMA_OUTPUT_PATH}`);
 }
 

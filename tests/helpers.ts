@@ -1,4 +1,5 @@
 import { expect } from 'bun:test';
+import type { VersionFetcher } from '../src/bin/doctor/system-info.ts';
 import { analyzeCommand } from '../src/core/analyze.ts';
 import { loadConfig } from '../src/core/config.ts';
 import type { AnalyzeOptions, Config } from '../src/types.ts';
@@ -61,3 +62,20 @@ export function withEnv<T>(env: Record<string, string>, fn: () => T): T {
     }
   }
 }
+
+/**
+ * Mock version fetcher for testing.
+ * Returns predefined versions instantly without spawning processes.
+ */
+export const mockVersionFetcher: VersionFetcher = async (args: string[]) => {
+  const cmd = args[0];
+  const mockVersions: Record<string, string> = {
+    claude: '1.0.0',
+    opencode: '0.1.0',
+    gemini: '0.20.0',
+    node: 'v22.0.0',
+    npm: '10.0.0',
+    bun: '1.0.0',
+  };
+  return mockVersions[cmd ?? ''] ?? null;
+};

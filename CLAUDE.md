@@ -11,11 +11,23 @@ A Claude Code and OpenCode plugin that blocks destructive git and filesystem com
 - **Setup**: `bun install`
 - **All checks**: `bun run check` (runs lint, typecheck, knip, ast-grep scan, tests)
 - **Single test**: `bun test tests/file.test.ts`
+- **Test pattern**: `bun test --test-name-pattern "pattern"`
 - **Lint**: `bun run lint` (uses Biome)
 - **Type check**: `bun run typecheck`
 - **Dead code**: `bun run knip`
 - **AST scan**: `bun run sg:scan`
 - **Build**: `bun run build`
+- **Doctor**: `bun src/bin/cc-safety-net.ts doctor` (diagnostics)
+
+## Pre-commit Hooks
+
+Runs on commit: `knip` → `lint-staged` (biome check --write, ast-grep scan)
+
+## Slash Commands
+
+- `/set-statusline`: Configure status line integration
+- `/set-custom-rules`: Create custom rules interactively
+- `/verify-custom-rules`: Validate custom rules config
 
 ## Architecture
 
@@ -41,6 +53,14 @@ The hook receives JSON input on stdin containing `tool_name` and `tool_input`. F
 - `audit.ts`: Audit logging for blocked commands
 - `verify-config.ts`: Config validator
 
+**Analysis submodules** (`src/core/analyze/`):
+- `find.ts`: `find -delete` and `find -exec rm` detection
+- `interpreters.ts`: Python/Node/Ruby/Perl one-liner detection
+- `xargs.ts`: `xargs rm` and dynamic input detection
+- `parallel.ts`: GNU parallel command analysis
+- `shell-wrappers.ts`: Recursive `bash -c`/`sh -c` unwrapping
+- `tmpdir.ts`: Temp directory path detection
+
 **Test utilities** (`tests/helpers.ts`):
 - `assertBlocked()`, `assertAllowed()` helpers for testing command analysis
 
@@ -59,6 +79,7 @@ The hook receives JSON input on stdin containing `tool_name` and `tool_input`. F
 - All functions require type annotations
 - Use `type | null` syntax (not `undefined` where possible)
 - Use kebab-case for file names (`rules-git.ts`, not `rulesGit.ts`)
+- For test-only exports, add `/** @internal Exported for testing */` JSDoc to satisfy knip
 
 ## Commit Conventions
 
