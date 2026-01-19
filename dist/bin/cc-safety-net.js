@@ -3344,7 +3344,7 @@ function detectAllHooks(cwd, options) {
 
 // src/bin/doctor/system-info.ts
 import { spawn } from "node:child_process";
-var CURRENT_VERSION = "0.6.0";
+var CURRENT_VERSION = "0.6.2";
 function getPackageVersion() {
   return CURRENT_VERSION;
 }
@@ -3569,7 +3569,7 @@ async function runGeminiCLIHook() {
 }
 
 // src/bin/help.ts
-var version = "0.6.0";
+var version = "0.6.2";
 function printHelp() {
   console.log(`cc-safety-net v${version}
 
