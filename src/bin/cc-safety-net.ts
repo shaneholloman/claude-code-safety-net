@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { runClaudeCodeHook } from './claude-code.ts';
+import { runCopilotCliHook } from './copilot-cli.ts';
 import { CUSTOM_RULES_DOC } from './custom-rules-doc.ts';
 import { runDoctor } from './doctor/index.ts';
 import { runGeminiCLIHook } from './gemini-cli.ts';
@@ -11,7 +12,7 @@ function printCustomRulesDoc(): void {
   console.log(CUSTOM_RULES_DOC);
 }
 
-type HookMode = 'claude-code' | 'gemini-cli' | 'statusline' | 'doctor';
+type HookMode = 'claude-code' | 'copilot-cli' | 'gemini-cli' | 'statusline' | 'doctor';
 
 interface DoctorFlags {
   json: boolean;
@@ -52,6 +53,10 @@ function handleCliFlags(): HookMode | null {
     return 'claude-code';
   }
 
+  if (args.includes('--copilot-cli') || args.includes('-cp')) {
+    return 'copilot-cli';
+  }
+
   if (args.includes('--gemini-cli') || args.includes('-gc')) {
     return 'gemini-cli';
   }
@@ -73,6 +78,8 @@ async function main(): Promise<void> {
   const mode = handleCliFlags();
   if (mode === 'claude-code') {
     await runClaudeCodeHook();
+  } else if (mode === 'copilot-cli') {
+    await runCopilotCliHook();
   } else if (mode === 'gemini-cli') {
     await runGeminiCLIHook();
   } else if (mode === 'statusline') {

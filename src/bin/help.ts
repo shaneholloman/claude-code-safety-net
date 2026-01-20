@@ -12,6 +12,7 @@ USAGE:
   cc-safety-net doctor --json            Output diagnostics as JSON
   cc-safety-net doctor --skip-update-check  Skip npm registry check
   cc-safety-net -cc, --claude-code       Run as Claude Code PreToolUse hook (reads JSON from stdin)
+  cc-safety-net -cp, --copilot-cli       Run as Copilot CLI preToolUse hook (reads JSON from stdin)
   cc-safety-net -gc, --gemini-cli        Run as Gemini CLI BeforeTool hook (reads JSON from stdin)
   cc-safety-net -vc, --verify-config     Validate config files
   cc-safety-net --custom-rules-doc       Print custom rules documentation
