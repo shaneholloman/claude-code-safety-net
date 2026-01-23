@@ -142,6 +142,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create or update draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           EXISTING_DRAFT=$(gh release list --json tagName,isDraft --jq '.[] | select(.isDraft == true and .tagName == "next") | .tagName')
 
@@ -163,5 +165,3 @@ jobs:
           ${{ steps.notes.outputs.notes }}
           EOF
           fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
