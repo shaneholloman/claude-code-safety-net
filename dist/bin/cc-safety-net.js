@@ -3835,9 +3835,9 @@ function explainSegment(tokens, depth, options, steps) {
       type: "recurse",
       reason: "busybox",
       innerCommand: redactEnvAssignmentsInString(busyboxInnerCmd),
-      depth
+      depth: depth + 1
     });
-    return explainSegment(strippedTokens.slice(1), depth, options, steps);
+    return explainSegment(strippedTokens.slice(1), depth + 1, options, steps);
   }
   const envAssignments = new Map(envResult.envAssignments);
   for (const [k, v] of wrapperResult.envAssignments) {
@@ -4101,7 +4101,6 @@ function explainCommand2(command, options) {
       continue;
     }
     const result = explainSegment(segment, 0, { ...analyzeOpts, effectiveCwd }, segmentSteps);
-    trace.segments.push({ index: i, steps: segmentSteps });
     if (result) {
       blocked = true;
       blockReason = result.reason;
@@ -4115,6 +4114,7 @@ function explainCommand2(command, options) {
       });
       effectiveCwd = null;
     }
+    trace.segments.push({ index: i, steps: segmentSteps });
   }
   return {
     trace,

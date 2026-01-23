@@ -26,10 +26,6 @@ export declare function formatHeader(box: BoxChars, width: number): string[];
  * Format a token array with each token in a unique distinct color.
  * Uses a curated palette for maximum visual distinction.
  */
-/**
- * Format a token array with each token in a unique distinct color.
- * Uses a curated palette for maximum visual distinction.
- */
 export declare function formatColoredTokenArray(tokens: readonly string[], seed?: number): string;
 export declare function wrapReason(reason: string, indent: string, maxWidth?: number): string[];
 export interface FormattedStep {
