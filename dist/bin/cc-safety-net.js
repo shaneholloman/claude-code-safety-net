@@ -215,10 +215,6 @@ var require_parse = __commonJS((exports, module) => {
   };
 });
 
-// node_modules/shell-quote/index.js
-var $quote = require_quote();
-var $parse = require_parse();
-
 // src/core/analyze/dangerous-text.ts
 function dangerousInText(text) {
   const t = text.toLowerCase();
@@ -402,6 +398,10 @@ function hasRecursiveForceFlags(tokens) {
   }
   return hasRecursive && hasForce;
 }
+
+// node_modules/shell-quote/index.js
+var $quote = require_quote();
+var $parse = require_parse();
 
 // src/types.ts
 var MAX_RECURSION_DEPTH = 10;
@@ -2365,6 +2365,21 @@ var claudeCodeCommand = {
   examples: ["cc-safety-net -cc", "cc-safety-net --claude-code"]
 };
 
+// src/bin/commands/copilot-cli.ts
+var copilotCliCommand = {
+  name: "copilot-cli",
+  aliases: ["-cp", "--copilot-cli"],
+  description: "Run as Copilot CLI PreToolUse hook (reads JSON from stdin)",
+  usage: "-cp, --copilot-cli",
+  options: [
+    {
+      flags: "-h, --help",
+      description: "Show this help"
+    }
+  ],
+  examples: ["cc-safety-net -cp", "cc-safety-net --copilot-cli"]
+};
+
 // src/bin/commands/custom-rules-doc.ts
 var customRulesDocCommand = {
   name: "custom-rules-doc",
@@ -2485,6 +2500,7 @@ var commands = [
   doctorCommand,
   explainCommand,
   claudeCodeCommand,
+  copilotCliCommand,
   geminiCliCommand,
   verifyConfigCommand,
   customRulesDocCommand,
@@ -2496,6 +2512,74 @@ function findCommand(nameOrAlias) {
 }
 function getVisibleCommands() {
   return commands.filter((cmd) => !cmd.hidden);
+}
+
+// src/bin/copilot-cli.ts
+function outputCopilotDeny(reason, command, segment) {
+  const message = formatBlockedMessage({
+    reason,
+    command,
+    segment,
+    redact: redactSecrets
+  });
+  const output = {
+    permissionDecision: "deny",
+    permissionDecisionReason: message
+  };
+  console.log(JSON.stringify(output));
+}
+async function runCopilotCliHook() {
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk);
+  }
+  const inputText = Buffer.concat(chunks).toString("utf-8").trim();
+  if (!inputText) {
+    return;
+  }
+  let input;
+  try {
+    input = JSON.parse(inputText);
+  } catch {
+    if (envTruthy("SAFETY_NET_STRICT")) {
+      outputCopilotDeny("Failed to parse hook input JSON (strict mode)");
+    }
+    return;
+  }
+  if (input.toolName !== "bash") {
+    return;
+  }
+  let toolArgs;
+  try {
+    toolArgs = JSON.parse(input.toolArgs);
+  } catch {
+    if (envTruthy("SAFETY_NET_STRICT")) {
+      outputCopilotDeny("Failed to parse toolArgs JSON (strict mode)");
+    }
+    return;
+  }
+  const command = toolArgs.command;
+  if (!command) {
+    return;
+  }
+  const cwd = input.cwd ?? process.cwd();
+  const strict = envTruthy("SAFETY_NET_STRICT");
+  const paranoidAll = envTruthy("SAFETY_NET_PARANOID");
+  const paranoidRm = paranoidAll || envTruthy("SAFETY_NET_PARANOID_RM");
+  const paranoidInterpreters = paranoidAll || envTruthy("SAFETY_NET_PARANOID_INTERPRETERS");
+  const config = loadConfig(cwd);
+  const result = analyzeCommand(command, {
+    cwd,
+    config,
+    strict,
+    paranoidRm,
+    paranoidInterpreters
+  });
+  if (result) {
+    const sessionId = `copilot-${input.timestamp ?? Date.now()}`;
+    writeAuditLog(sessionId, command, result.segment, result.reason, cwd);
+    outputCopilotDeny(result.reason, command, result.segment);
+  }
 }
 
 // src/bin/custom-rules-doc.ts
@@ -3676,6 +3760,14 @@ async function checkForUpdates() {
   }
 }
 
+// src/bin/doctor/flags.ts
+function parseDoctorFlags(args) {
+  return {
+    json: args.includes("--json"),
+    skipUpdateCheck: args.includes("--skip-update-check")
+  };
+}
+
 // src/bin/doctor/index.ts
 async function runDoctor(options = {}) {
   const cwd = options.cwd ?? process.cwd();
@@ -4234,6 +4326,50 @@ function explainCommand2(command, options) {
     configSource,
     configValid
   };
+}
+// src/bin/explain/flags.ts
+function parseExplainFlags(args) {
+  let json = false;
+  let cwd;
+  const remaining = [];
+  let i = 0;
+  while (i < args.length) {
+    const arg = args[i];
+    if (arg === "--help" || arg === "-h") {
+      i++;
+      continue;
+    }
+    if (arg === "--") {
+      remaining.push(...args.slice(i + 1));
+      break;
+    }
+    if (!arg?.startsWith("--")) {
+      remaining.push(...args.slice(i));
+      break;
+    }
+    if (arg === "--json") {
+      json = true;
+      i++;
+    } else if (arg === "--cwd") {
+      i++;
+      if (i >= args.length || args[i]?.startsWith("--")) {
+        console.error("Error: --cwd requires a path");
+        return null;
+      }
+      cwd = args[i];
+      i++;
+    } else {
+      remaining.push(...args.slice(i));
+      break;
+    }
+  }
+  const command = remaining.length === 1 ? remaining[0] : $quote(remaining);
+  if (!command) {
+    console.error("Error: No command provided");
+    console.error("Usage: cc-safety-net explain [--json] [--cwd <path>] <command>");
+    return null;
+  }
+  return { json, cwd, command };
 }
 // src/bin/explain/format-helpers.ts
 function getBoxChars(asciiOnly) {
@@ -4919,49 +5055,6 @@ function handleCommandHelp(args) {
   }
   return false;
 }
-function parseExplainFlags(args) {
-  let json = false;
-  let cwd;
-  const remaining = [];
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-    if (arg === "--help" || arg === "-h") {
-      i++;
-      continue;
-    }
-    if (arg === "--") {
-      remaining.push(...args.slice(i + 1));
-      break;
-    }
-    if (!arg?.startsWith("--")) {
-      remaining.push(...args.slice(i));
-      break;
-    }
-    if (arg === "--json") {
-      json = true;
-      i++;
-    } else if (arg === "--cwd") {
-      i++;
-      if (i >= args.length || args[i]?.startsWith("--")) {
-        console.error("Error: --cwd requires a path");
-        return null;
-      }
-      cwd = args[i];
-      i++;
-    } else {
-      remaining.push(...args.slice(i));
-      break;
-    }
-  }
-  const command = remaining.length === 1 ? remaining[0] : $quote(remaining);
-  if (!command) {
-    console.error("Error: No command provided");
-    console.error("Usage: cc-safety-net explain [--json] [--cwd <path>] <command>");
-    return null;
-  }
-  return { json, cwd, command };
-}
 function handleCliFlags() {
   const args = process.argv.slice(2);
   if (handleHelpCommand(args)) {
@@ -5007,13 +5100,6 @@ function handleCliFlags() {
   console.error("Run 'cc-safety-net --help' for usage.");
   process.exit(1);
 }
-function getDoctorFlags() {
-  const args = process.argv.slice(2);
-  return {
-    json: args.includes("--json"),
-    skipUpdateCheck: args.includes("--skip-update-check")
-  };
-}
 async function main() {
   const mode = handleCliFlags();
   if (mode === "claude-code") {
@@ -5025,7 +5111,7 @@ async function main() {
   } else if (mode === "statusline") {
     await printStatusline();
   } else if (mode === "doctor") {
-    const flags = getDoctorFlags();
+    const flags = parseDoctorFlags(process.argv.slice(2));
     const exitCode = await runDoctor({
       json: flags.json,
       skipUpdateCheck: flags.skipUpdateCheck
