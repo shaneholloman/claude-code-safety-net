@@ -20,6 +20,8 @@ import { getPackageVersion, getSystemInfo } from '@/bin/doctor/system-info';
 import type { DoctorOptions, DoctorReport } from '@/bin/doctor/types';
 import { checkForUpdates } from '@/bin/doctor/updates';
 
+export { parseDoctorFlags } from '@/bin/doctor/flags';
+
 export async function runDoctor(options: DoctorOptions = {}): Promise<number> {
   const cwd = options.cwd ?? process.cwd();
 

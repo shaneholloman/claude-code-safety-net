@@ -1,4 +1,5 @@
 import { claudeCodeCommand } from './claude-code';
+import { copilotCliCommand } from './copilot-cli';
 import { customRulesDocCommand } from './custom-rules-doc';
 import { doctorCommand } from './doctor';
 import { explainCommand } from './explain';
@@ -19,6 +20,7 @@ export const commands: readonly Command[] = [
   doctorCommand,
   explainCommand,
   claudeCodeCommand,
+  copilotCliCommand,
   geminiCliCommand,
   verifyConfigCommand,
   customRulesDocCommand,

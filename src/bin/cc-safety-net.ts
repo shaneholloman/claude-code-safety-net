@@ -1,11 +1,15 @@
 #!/usr/bin/env node
-import { quote } from 'shell-quote';
 import { runClaudeCodeHook } from '@/bin/claude-code';
 import { findCommand } from '@/bin/commands';
-import { runCopilotCliHook } from './copilot-cli.ts';
+import { runCopilotCliHook } from '@/bin/copilot-cli';
 import { CUSTOM_RULES_DOC } from '@/bin/custom-rules-doc';
-import { runDoctor } from '@/bin/doctor/index';
-import { explainCommand, formatTraceHuman, formatTraceJson } from '@/bin/explain/index';
+import { parseDoctorFlags, runDoctor } from '@/bin/doctor/index';
+import {
+  explainCommand,
+  formatTraceHuman,
+  formatTraceJson,
+  parseExplainFlags,
+} from '@/bin/explain/index';
 import { runGeminiCLIHook } from '@/bin/gemini-cli';
 import { printHelp, printVersion, showCommandHelp } from '@/bin/help';
 import { printStatusline } from '@/bin/statusline';
@@ -15,18 +19,13 @@ function printCustomRulesDoc(): void {
   console.log(CUSTOM_RULES_DOC);
 }
 
-type HookMode = 'claude-code' | 'copilot-cli' | 'gemini-cli' | 'statusline' | 'doctor' | 'explain';
-
-interface DoctorFlags {
-  json: boolean;
-  skipUpdateCheck: boolean;
-}
-
-interface ExplainFlags {
-  json: boolean;
-  cwd?: string;
-  command: string;
-}
+type CommandMode =
+  | 'claude-code'
+  | 'copilot-cli'
+  | 'gemini-cli'
+  | 'statusline'
+  | 'doctor'
+  | 'explain';
 
 /**
  * Check if --help or -h is present in args (but not as a quoted command argument).
@@ -85,65 +84,7 @@ function handleCommandHelp(args: readonly string[]): boolean {
   return false;
 }
 
-function parseExplainFlags(args: string[]): ExplainFlags | null {
-  let json = false;
-  let cwd: string | undefined;
-  const remaining: string[] = [];
-
-  let i = 0;
-  while (i < args.length) {
-    const arg = args[i];
-
-    // Skip --help as it's handled elsewhere
-    if (arg === '--help' || arg === '-h') {
-      i++;
-      continue;
-    }
-
-    // Explicit separator: everything after is the command
-    if (arg === '--') {
-      remaining.push(...args.slice(i + 1));
-      break;
-    }
-
-    // Once we hit a non-flag arg, everything else is the command
-    if (!arg?.startsWith('--')) {
-      remaining.push(...args.slice(i));
-      break;
-    }
-
-    if (arg === '--json') {
-      json = true;
-      i++;
-    } else if (arg === '--cwd') {
-      i++;
-      if (i >= args.length || args[i]?.startsWith('--')) {
-        console.error('Error: --cwd requires a path');
-        return null;
-      }
-      cwd = args[i];
-      i++;
-    } else {
-      // Unknown flag - treat as start of command
-      remaining.push(...args.slice(i));
-      break;
-    }
-  }
-
-  // When the user passes a full command as a single argument (e.g., explain "git status | rm -rf /"),
-  // use it directly to preserve shell operators. Otherwise, use quote() to properly escape
-  // multiple arguments containing spaces.
-  const command = remaining.length === 1 ? remaining[0] : quote(remaining);
-  if (!command) {
-    console.error('Error: No command provided');
-    console.error('Usage: cc-safety-net explain [--json] [--cwd <path>] <command>');
-    return null;
-  }
-
-  return { json, cwd, command };
-}
-
-function handleCliFlags(): HookMode | null {
+function handleCliFlags(): CommandMode | null {
   const args = process.argv.slice(2);
 
   // Handle "help <command>" pattern first
@@ -204,14 +145,6 @@ function handleCliFlags(): HookMode | null {
   process.exit(1);
 }
 
-function getDoctorFlags(): DoctorFlags {
-  const args = process.argv.slice(2);
-  return {
-    json: args.includes('--json'),
-    skipUpdateCheck: args.includes('--skip-update-check'),
-  };
-}
-
 async function main(): Promise<void> {
   const mode = handleCliFlags();
   if (mode === 'claude-code') {
@@ -223,7 +156,7 @@ async function main(): Promise<void> {
   } else if (mode === 'statusline') {
     await printStatusline();
   } else if (mode === 'doctor') {
-    const flags = getDoctorFlags();
+    const flags = parseDoctorFlags(process.argv.slice(2));
     const exitCode = await runDoctor({
       json: flags.json,
       skipUpdateCheck: flags.skipUpdateCheck,
