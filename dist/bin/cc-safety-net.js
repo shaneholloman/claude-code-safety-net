@@ -2241,7 +2241,8 @@ function writeAuditLog(sessionId, command, segment, reason, cwd, options = {}) {
     };
     appendFileSync(logFile, `${JSON.stringify(entry)}
 `, "utf-8");
-  } catch {}
+  } catch {
+  }
 }
 function redactSecrets(text) {
   let result = text;
@@ -2349,6 +2350,74 @@ async function runClaudeCodeHook() {
       writeAuditLog(sessionId, command, result.segment, result.reason, cwd);
     }
     outputDeny(result.reason, command, result.segment);
+  }
+}
+
+// src/bin/copilot-cli.ts
+function outputCopilotDeny(reason, command, segment) {
+  const message = formatBlockedMessage({
+    reason,
+    command,
+    segment,
+    redact: redactSecrets
+  });
+  const output = {
+    permissionDecision: "deny",
+    permissionDecisionReason: message
+  };
+  console.log(JSON.stringify(output));
+}
+async function runCopilotCliHook() {
+  const chunks = [];
+  for await (const chunk of process.stdin) {
+    chunks.push(chunk);
+  }
+  const inputText = Buffer.concat(chunks).toString("utf-8").trim();
+  if (!inputText) {
+    return;
+  }
+  let input;
+  try {
+    input = JSON.parse(inputText);
+  } catch {
+    if (envTruthy("SAFETY_NET_STRICT")) {
+      outputCopilotDeny("Failed to parse hook input JSON (strict mode)");
+    }
+    return;
+  }
+  if (input.toolName !== "bash") {
+    return;
+  }
+  let toolArgs;
+  try {
+    toolArgs = JSON.parse(input.toolArgs);
+  } catch {
+    if (envTruthy("SAFETY_NET_STRICT")) {
+      outputCopilotDeny("Failed to parse toolArgs JSON (strict mode)");
+    }
+    return;
+  }
+  const command = toolArgs.command;
+  if (!command) {
+    return;
+  }
+  const cwd = input.cwd ?? process.cwd();
+  const strict = envTruthy("SAFETY_NET_STRICT");
+  const paranoidAll = envTruthy("SAFETY_NET_PARANOID");
+  const paranoidRm = paranoidAll || envTruthy("SAFETY_NET_PARANOID_RM");
+  const paranoidInterpreters = paranoidAll || envTruthy("SAFETY_NET_PARANOID_INTERPRETERS");
+  const config = loadConfig(cwd);
+  const result = analyzeCommand(command, {
+    cwd,
+    config,
+    strict,
+    paranoidRm,
+    paranoidInterpreters
+  });
+  if (result) {
+    const sessionId = `copilot-${input.timestamp ?? Date.now()}`;
+    writeAuditLog(sessionId, command, result.segment, result.reason, cwd);
+    outputCopilotDeny(result.reason, command, result.segment);
   }
 }
 
@@ -2514,12 +2583,14 @@ function getActivitySummary(days = 7, logsDir = join3(homedir4(), ".cc-safety-ne
             entries.push(entry);
             hasRecentEntry = true;
           }
-        } catch {}
+        } catch {
+        }
       }
       if (hasRecentEntry) {
         sessionCount++;
       }
-    } catch {}
+    } catch {
+    }
   }
   entries.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const recentEntries = entries.slice(0, 3).map((e) => ({
@@ -3580,6 +3651,7 @@ USAGE:
   cc-safety-net doctor --json            Output diagnostics as JSON
   cc-safety-net doctor --skip-update-check  Skip npm registry check
   cc-safety-net -cc, --claude-code       Run as Claude Code PreToolUse hook (reads JSON from stdin)
+  cc-safety-net -cp, --copilot-cli       Run as Copilot CLI preToolUse hook (reads JSON from stdin)
   cc-safety-net -gc, --gemini-cli        Run as Gemini CLI BeforeTool hook (reads JSON from stdin)
   cc-safety-net -vc, --verify-config     Validate config files
   cc-safety-net --custom-rules-doc       Print custom rules documentation
@@ -3812,6 +3884,9 @@ function handleCliFlags() {
   if (args.includes("--claude-code") || args.includes("-cc")) {
     return "claude-code";
   }
+  if (args.includes("--copilot-cli") || args.includes("-cp")) {
+    return "copilot-cli";
+  }
   if (args.includes("--gemini-cli") || args.includes("-gc")) {
     return "gemini-cli";
   }
@@ -3830,6 +3905,8 @@ async function main() {
   const mode = handleCliFlags();
   if (mode === "claude-code") {
     await runClaudeCodeHook();
+  } else if (mode === "copilot-cli") {
+    await runCopilotCliHook();
   } else if (mode === "gemini-cli") {
     await runGeminiCLIHook();
   } else if (mode === "statusline") {

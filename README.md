@@ -6,6 +6,7 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-D27656)](#claude-code-installation)
 [![OpenCode](https://img.shields.io/badge/OpenCode-black)](#opencode-installation)
 [![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-678AE3)](#gemini-cli-installation)
+[![Copilot CLI](https://img.shields.io/badge/Copilot%20CLI-2088FF)](#github-copilot-cli-installation)
 [![License: MIT](https://img.shields.io/badge/License-MIT-red.svg)](https://opensource.org/licenses/MIT)
 
 <div align="center">
@@ -26,6 +27,7 @@ A Claude Code plugin that acts as a safety net, catching destructive git and fil
   - [Claude Code Installation](#claude-code-installation)
   - [OpenCode Installation](#opencode-installation)
   - [Gemini CLI Installation](#gemini-cli-installation)
+  - [GitHub Copilot CLI Installation](#github-copilot-cli-installation)
 - [Status Line Integration](#status-line-integration)
   - [Setup via Slash Command](#setup-via-slash-command)
   - [Manual Setup](#manual-setup)
@@ -209,6 +211,38 @@ gemini extensions install https://github.com/kenryu42/gemini-safety-net
 >   }
 > }
 > ```
+
+---
+
+### GitHub Copilot CLI Installation
+
+Safety Net supports GitHub Copilot CLI via its [hooks system](https://docs.github.com/en/copilot/concepts/agents/coding-agent/about-hooks).
+
+1. **Create the hooks directory** in your repository:
+
+   ```bash
+   mkdir -p .github/hooks
+   ```
+
+2. **Create `.github/hooks/safety-net.json`**:
+
+   ```json
+   {
+     "version": 1,
+     "hooks": {
+       "preToolUse": [
+         {
+           "type": "command",
+           "bash": "npx -y cc-safety-net --copilot-cli",
+           "cwd": ".",
+           "timeoutSec": 15
+         }
+       ]
+     }
+   }
+   ```
+
+The hook will intercept bash commands and block destructive operations before they execute.
 
 ## Status Line Integration
 

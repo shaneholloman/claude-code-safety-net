@@ -88,6 +88,20 @@ export interface GeminiHookOutput {
   suppressOutput?: boolean;
 }
 
+/** GitHub Copilot CLI preToolUse hook input format */
+export interface CopilotCliHookInput {
+  timestamp: number;
+  cwd: string;
+  toolName: string;
+  toolArgs: string;
+}
+
+/** GitHub Copilot CLI preToolUse hook output format */
+export interface CopilotCliHookOutput {
+  permissionDecision: 'allow' | 'deny' | 'ask';
+  permissionDecisionReason?: string;
+}
+
 /** Options for command analysis */
 export interface AnalyzeOptions {
   /** Current working directory */

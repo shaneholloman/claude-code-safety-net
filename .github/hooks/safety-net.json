@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": "npx -y cc-safety-net --copilot-cli",
+        "cwd": ".",
+        "timeoutSec": 15
+      }
+    ]
+  }
+}
