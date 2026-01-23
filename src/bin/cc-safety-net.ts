@@ -1,7 +1,5 @@
 #!/usr/bin/env node
-import { runClaudeCodeHook } from '@/bin/claude-code';
 import { findCommand } from '@/bin/commands';
-import { runCopilotCliHook } from '@/bin/copilot-cli';
 import { CUSTOM_RULES_DOC } from '@/bin/custom-rules-doc';
 import { parseDoctorFlags, runDoctor } from '@/bin/doctor/index';
 import {
@@ -10,8 +8,10 @@ import {
   formatTraceJson,
   parseExplainFlags,
 } from '@/bin/explain/index';
-import { runGeminiCLIHook } from '@/bin/gemini-cli';
 import { printHelp, printVersion, showCommandHelp } from '@/bin/help';
+import { runClaudeCodeHook } from '@/bin/hooks/claude-code';
+import { runCopilotCliHook } from '@/bin/hooks/copilot-cli';
+import { runGeminiCLIHook } from '@/bin/hooks/gemini-cli';
 import { printStatusline } from '@/bin/statusline';
 import { verifyConfig } from '@/bin/verify-config';
 
