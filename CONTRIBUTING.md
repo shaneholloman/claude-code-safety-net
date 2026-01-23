@@ -398,8 +398,8 @@ When adding rules, ensure you test these edge cases:
 
 - [ ] Code follows project conventions (type hints, naming, etc.)
 - [ ] `bun run check` passes (lint, types, dead code, tests)
-- [ ] Tests added for new rules
-- [ ] Tested locally with Claude Code and Opencode
+- [ ] Tests added for new rules (minimum 90% coverage required)
+- [ ] Tested locally with Claude Code, OpenCode, Gemini CLI or GitHub Copilot CLI
 - [ ] Updated documentation if needed (README, AGENTS.md)
 - [ ] No version changes in `package.json`
 
@@ -413,6 +413,7 @@ When adding rules, ensure you test these edge cases:
 ## Getting Help
 
 - **Diagnostics**: Run `bunx cc-safety-net doctor` to verify your setup is working correctly
+- **Debug Analysis**: Run `bunx cc-safety-net explain "git command"` to see step-by-step how a command is analyzed
 - **Project Knowledge**: Check `CLAUDE.md` or `AGENTS.md` for detailed architecture and conventions
 - **Code Patterns**: Review existing implementations in `src/core/`
 - **Test Patterns**: See `tests/helpers.ts` for test utilities

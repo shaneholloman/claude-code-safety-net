@@ -1,8 +1,8 @@
 import type { Plugin } from '@opencode-ai/plugin';
-import { analyzeCommand, loadConfig } from './core/analyze.ts';
-import { envTruthy } from './core/env.ts';
-import { formatBlockedMessage } from './core/format.ts';
-import { loadBuiltinCommands } from './features/builtin-commands/index.ts';
+import { analyzeCommand, loadConfig } from '@/core/analyze';
+import { envTruthy } from '@/core/env';
+import { formatBlockedMessage } from '@/core/format';
+import { loadBuiltinCommands } from '@/features/builtin-commands/index';
 
 export const SafetyNetPlugin: Plugin = async ({ directory }) => {
   const safetyNetConfig = loadConfig(directory);
