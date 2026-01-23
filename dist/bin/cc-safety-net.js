@@ -2241,8 +2241,7 @@ function writeAuditLog(sessionId, command, segment, reason, cwd, options = {}) {
     };
     appendFileSync(logFile, `${JSON.stringify(entry)}
 `, "utf-8");
-  } catch {
-  }
+  } catch {}
 }
 function redactSecrets(text) {
   let result = text;
@@ -2583,14 +2582,12 @@ function getActivitySummary(days = 7, logsDir = join3(homedir4(), ".cc-safety-ne
             entries.push(entry);
             hasRecentEntry = true;
           }
-        } catch {
-        }
+        } catch {}
       }
       if (hasRecentEntry) {
         sessionCount++;
       }
-    } catch {
-    }
+    } catch {}
   }
   entries.sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime());
   const recentEntries = entries.slice(0, 3).map((e) => ({
