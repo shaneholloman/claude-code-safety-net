@@ -137,7 +137,8 @@ describe('explainCommand edge cases', () => {
   });
 
   test('custom-rules-check shows rulesChecked false when no config', () => {
-    const result = explainCommand('echo hello');
+    // Pass explicit empty config to avoid picking up real .safety-net.json
+    const result = explainCommand('echo hello', { config: { version: 1, rules: [] } });
     const allSteps = result.trace.segments.flatMap((s) => s.steps);
     const customStep = allSteps.find((s) => s.type === 'custom-rules-check');
     expect(customStep).toBeDefined();
