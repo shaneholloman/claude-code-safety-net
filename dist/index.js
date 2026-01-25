@@ -1167,6 +1167,15 @@ function analyzeGitWorktree(tokens) {
 import { realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { normalize, resolve, sep } from "node:path";
+var IS_WINDOWS = process.platform === "win32";
+function normalizePathForComparison(p) {
+  let normalized = normalize(p);
+  if (IS_WINDOWS) {
+    normalized = normalized.replace(/\//g, "\\");
+    normalized = normalized.toLowerCase();
+  }
+  return normalized;
+}
 var REASON_RM_RF = "rm -rf outside cwd is blocked. Use explicit paths within the current directory, or delete manually.";
 var REASON_RM_RF_ROOT_HOME = "rm -rf targeting root or home directory is extremely dangerous and always blocked.";
 function analyzeRm(tokens, options = {}) {
@@ -1291,7 +1300,9 @@ function isTempTarget(path, allowTmpdirVar) {
     return true;
   }
   const systemTmpdir = tmpdir();
-  if (normalized.startsWith(`${systemTmpdir}${sep}`) || normalized === systemTmpdir) {
+  const normalizedTmpdir = normalizePathForComparison(systemTmpdir);
+  const pathToCompare = normalizePathForComparison(normalized);
+  if (pathToCompare.startsWith(`${normalizedTmpdir}${sep}`) || pathToCompare === normalizedTmpdir) {
     return true;
   }
   if (allowTmpdirVar) {
@@ -1309,27 +1320,24 @@ function getHomeDirForRmPolicy() {
 }
 function isCwdHomeForRmPolicy(cwd, homeDir) {
   try {
-    const normalizedCwd = normalize(cwd);
-    const normalizedHome = normalize(homeDir);
-    return normalizedCwd === normalizedHome;
+    return normalizePathForComparison(cwd) === normalizePathForComparison(homeDir);
   } catch {
     return false;
   }
 }
 function isCwdSelfTarget(target, cwd) {
-  if (target === "." || target === "./") {
+  if (target === "." || target === "./" || target === ".\\") {
     return true;
   }
   try {
     const resolved = resolve(cwd, target);
     const realCwd = realpathSync(cwd);
     const realResolved = realpathSync(resolved);
-    return realResolved === realCwd;
+    return normalizePathForComparison(realResolved) === normalizePathForComparison(realCwd);
   } catch {
     try {
       const resolved = resolve(cwd, target);
-      const normalizedCwd = normalize(cwd);
-      return resolved === normalizedCwd;
+      return normalizePathForComparison(resolved) === normalizePathForComparison(cwd);
     } catch {
       return false;
     }
@@ -1345,8 +1353,8 @@ function isTargetWithinCwd(target, originalCwd, effectiveCwd) {
   }
   if (target.startsWith("/") || /^[A-Za-z]:[\\/]/.test(target)) {
     try {
-      const normalizedTarget = normalize(target);
-      const normalizedCwd = `${normalize(originalCwd)}${sep}`;
+      const normalizedTarget = normalizePathForComparison(target);
+      const normalizedCwd = `${normalizePathForComparison(originalCwd)}${sep}`;
       return normalizedTarget.startsWith(normalizedCwd);
     } catch {
       return false;
@@ -1355,8 +1363,9 @@ function isTargetWithinCwd(target, originalCwd, effectiveCwd) {
   if (target.startsWith("./") || target.startsWith(".\\") || !target.includes("/") && !target.includes("\\")) {
     try {
       const resolved = resolve(resolveCwd, target);
-      const normalizedOriginalCwd = normalize(originalCwd);
-      return resolved.startsWith(`${normalizedOriginalCwd}${sep}`) || resolved === normalizedOriginalCwd;
+      const normalizedResolved = normalizePathForComparison(resolved);
+      const normalizedOriginalCwd = normalizePathForComparison(originalCwd);
+      return normalizedResolved.startsWith(`${normalizedOriginalCwd}${sep}`) || normalizedResolved === normalizedOriginalCwd;
     } catch {
       return false;
     }
@@ -1366,8 +1375,9 @@ function isTargetWithinCwd(target, originalCwd, effectiveCwd) {
   }
   try {
     const resolved = resolve(resolveCwd, target);
-    const normalizedCwd = normalize(originalCwd);
-    return resolved.startsWith(`${normalizedCwd}${sep}`) || resolved === normalizedCwd;
+    const normalizedResolved = normalizePathForComparison(resolved);
+    const normalizedCwd = normalizePathForComparison(originalCwd);
+    return normalizedResolved.startsWith(`${normalizedCwd}${sep}`) || normalizedResolved === normalizedCwd;
   } catch {
     return false;
   }
@@ -1375,9 +1385,7 @@ function isTargetWithinCwd(target, originalCwd, effectiveCwd) {
 function isHomeDirectory(cwd) {
   const home = process.env.HOME ?? homedir();
   try {
-    const normalizedCwd = normalize(cwd);
-    const normalizedHome = normalize(home);
-    return normalizedCwd === normalizedHome;
+    return normalizePathForComparison(cwd) === normalizePathForComparison(home);
   } catch {
     return false;
   }
