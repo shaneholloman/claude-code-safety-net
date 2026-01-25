@@ -6,8 +6,10 @@ bun run check
 # Build the latest dist
 bun run build
 
-# Check if dist/ changed after build
+# Auto-commit dist/ if it changed after build
 if ! git diff --quiet dist/; then
-  echo "⚠️  dist/ is out of date! Please commit the updated dist/ folder."
-  exit 1
+  echo "📦 dist/ changed, auto-committing..."
+  git add dist/*
+  git commit -m "chore: sync dist" --no-verify
+  echo "✅ Committed dist/ changes"
 fi
