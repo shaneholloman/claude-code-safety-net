@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { normalize, resolve } from 'node:path';
+import { normalize, resolve, sep } from 'node:path';
 
 import { hasRecursiveForceFlags } from '@/core/analyze/rm-flags';
 
@@ -184,7 +184,7 @@ function isTempTarget(path: string, allowTmpdirVar: boolean): boolean {
   }
 
   const systemTmpdir = tmpdir();
-  if (normalized.startsWith(`${systemTmpdir}/`) || normalized === systemTmpdir) {
+  if (normalized.startsWith(`${systemTmpdir}${sep}`) || normalized === systemTmpdir) {
     return true;
   }
 
@@ -247,21 +247,27 @@ function isTargetWithinCwd(target: string, originalCwd: string, effectiveCwd?: s
     return false;
   }
 
-  if (target.startsWith('/')) {
+  if (target.startsWith('/') || /^[A-Za-z]:[\\/]/.test(target)) {
     try {
       const normalizedTarget = normalize(target);
-      const normalizedCwd = `${normalize(originalCwd)}/`;
+      const normalizedCwd = `${normalize(originalCwd)}${sep}`;
       return normalizedTarget.startsWith(normalizedCwd);
     } catch {
       return false;
     }
   }
 
-  if (target.startsWith('./') || !target.includes('/')) {
+  if (
+    target.startsWith('./') ||
+    target.startsWith('.\\') ||
+    (!target.includes('/') && !target.includes('\\'))
+  ) {
     try {
       const resolved = resolve(resolveCwd, target);
       const normalizedOriginalCwd = normalize(originalCwd);
-      return resolved.startsWith(`${normalizedOriginalCwd}/`) || resolved === normalizedOriginalCwd;
+      return (
+        resolved.startsWith(`${normalizedOriginalCwd}${sep}`) || resolved === normalizedOriginalCwd
+      );
     } catch {
       return false;
     }
@@ -274,7 +280,7 @@ function isTargetWithinCwd(target: string, originalCwd: string, effectiveCwd?: s
   try {
     const resolved = resolve(resolveCwd, target);
     const normalizedCwd = normalize(originalCwd);
-    return resolved.startsWith(`${normalizedCwd}/`) || resolved === normalizedCwd;
+    return resolved.startsWith(`${normalizedCwd}${sep}`) || resolved === normalizedCwd;
   } catch {
     return false;
   }

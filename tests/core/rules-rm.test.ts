@@ -387,6 +387,49 @@ describe('rm -rf cwd-aware', () => {
   });
 });
 
+describe('analyzeRm Windows path handling', () => {
+  const isWindows = process.platform === 'win32';
+
+  test('recognizes Windows absolute path with backslash', () => {
+    // Windows-style absolute path should be recognized as absolute
+    // and compared against cwd (blocked since C:\\other is outside C:\\Projects)
+    expect(analyzeRm(['rm', '-rf', 'C:\\other\\path'], { cwd: 'C:\\Projects' })).toContain(
+      'rm -rf outside cwd',
+    );
+  });
+
+  test('recognizes Windows absolute path with forward slash', () => {
+    expect(analyzeRm(['rm', '-rf', 'C:/other/path'], { cwd: 'C:\\Projects' })).toContain(
+      'rm -rf outside cwd',
+    );
+  });
+
+  // This test can only pass on Windows where path.normalize properly handles backslashes
+  test.skipIf(!isWindows)('allows Windows absolute path within cwd', () => {
+    expect(analyzeRm(['rm', '-rf', 'C:\\Projects\\dist'], { cwd: 'C:\\Projects' })).toBeNull();
+  });
+
+  test('allows relative path with backslash prefix', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'safety-net-win-'));
+    try {
+      // .\\dist is a relative path, should be allowed within cwd
+      expect(analyzeRm(['rm', '-rf', '.\\dist'], { cwd })).toBeNull();
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test('allows path without any separators', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'safety-net-win-'));
+    try {
+      // 'dist' has no separators, should be treated as relative
+      expect(analyzeRm(['rm', '-rf', 'dist'], { cwd })).toBeNull();
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('analyzeRm (unit)', () => {
   test('does not treat flags after -- as rm -rf', () => {
     expect(analyzeRm(['rm', '--', '-rf', '/'], { cwd: '/tmp' })).toBeNull();
