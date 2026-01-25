@@ -47,16 +47,15 @@ jobs:
           AGENT: "1"
 
       - name: Run doctor command
-        run: bun src/bin/cc-safety-net.ts doctor --skip-update-check
+        run: bun run cc-safety-net doctor --skip-update-check
 
       - name: Test rm -rf within cwd (issue #26)
         run: |
           # Create test directory structure
           mkdir test-dir
-          cd test-dir
 
           # Test: rm -rf dist should be ALLOWED within cwd
-          $result = bun ../src/bin/cc-safety-net.ts explain "rm -rf dist" 2>&1
+          $result = bun run cc-safety-net explain --cwd test-dir "rm -rf dist" 2>&1
           Write-Host "Result: $result"
 
           if ($result -match "ALLOWED") {
