@@ -2,8 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { analyzeRm } from '@/core/rules-rm';
-import { assertAllowed, assertBlocked, withEnv } from '../helpers.ts';
+import { analyzeRm, isHomeDirectory } from '@/core/rules-rm';
+import { assertAllowed, assertBlocked, toShellPath, withEnv } from '../helpers.ts';
 
 describe('rm -rf blocked', () => {
   test('rm -rf blocked', () => {
@@ -214,7 +214,7 @@ describe('rm -rf cwd-aware', () => {
     setup();
     try {
       const inside = join(tmpDir, 'dist');
-      assertAllowed(`rm -rf ${inside}`, tmpDir);
+      assertAllowed(`rm -rf ${toShellPath(inside)}`, tmpDir);
     } finally {
       cleanup();
     }
@@ -232,7 +232,7 @@ describe('rm -rf cwd-aware', () => {
   test('rm -rf cwd itself blocked', () => {
     setup();
     try {
-      assertBlocked(`rm -rf ${tmpDir}`, 'rm -rf', tmpDir);
+      assertBlocked(`rm -rf ${toShellPath(tmpDir)}`, 'rm -rf', tmpDir);
     } finally {
       cleanup();
     }
@@ -387,6 +387,49 @@ describe('rm -rf cwd-aware', () => {
   });
 });
 
+describe('analyzeRm Windows path handling', () => {
+  const isWindows = process.platform === 'win32';
+
+  test('recognizes Windows absolute path with backslash', () => {
+    // Windows-style absolute path should be recognized as absolute
+    // and compared against cwd (blocked since C:\\other is outside C:\\Projects)
+    expect(analyzeRm(['rm', '-rf', 'C:\\other\\path'], { cwd: 'C:\\Projects' })).toContain(
+      'rm -rf outside cwd',
+    );
+  });
+
+  test('recognizes Windows absolute path with forward slash', () => {
+    expect(analyzeRm(['rm', '-rf', 'C:/other/path'], { cwd: 'C:\\Projects' })).toContain(
+      'rm -rf outside cwd',
+    );
+  });
+
+  // This test can only pass on Windows where path.normalize properly handles backslashes
+  test.skipIf(!isWindows)('allows Windows absolute path within cwd', () => {
+    expect(analyzeRm(['rm', '-rf', 'C:\\Projects\\dist'], { cwd: 'C:\\Projects' })).toBeNull();
+  });
+
+  test('allows relative path with backslash prefix', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'safety-net-win-'));
+    try {
+      // .\\dist is a relative path, should be allowed within cwd
+      expect(analyzeRm(['rm', '-rf', '.\\dist'], { cwd })).toBeNull();
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+
+  test('allows path without any separators', () => {
+    const cwd = mkdtempSync(join(tmpdir(), 'safety-net-win-'));
+    try {
+      // 'dist' has no separators, should be treated as relative
+      expect(analyzeRm(['rm', '-rf', 'dist'], { cwd })).toBeNull();
+    } finally {
+      rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('analyzeRm (unit)', () => {
   test('does not treat flags after -- as rm -rf', () => {
     expect(analyzeRm(['rm', '--', '-rf', '/'], { cwd: '/tmp' })).toBeNull();
@@ -455,5 +498,28 @@ describe('analyzeRm (unit)', () => {
   test('blocks rm -rf in home cwd via direct analyzeRm call', () => {
     const home = homedir();
     expect(analyzeRm(['rm', '-rf', 'somefile'], { cwd: home })).toContain('extremely dangerous');
+  });
+
+  test('handles paths with separators and bad cwd defensively', () => {
+    // 'foo/bar' has separators but doesn't start with ./, hitting the final try-catch (line 317)
+    const badCwd = 1 as unknown as string;
+    expect(analyzeRm(['rm', '-rf', 'foo/bar'], { cwd: badCwd })).toContain('rm -rf outside cwd');
+  });
+});
+
+describe('isHomeDirectory (unit)', () => {
+  test('returns true for home directory', () => {
+    const home = homedir();
+    expect(isHomeDirectory(home)).toBe(true);
+  });
+
+  test('returns false for non-home directory', () => {
+    expect(isHomeDirectory('/tmp')).toBe(false);
+  });
+
+  test('handles invalid input gracefully', () => {
+    // Pass a non-string to trigger the catch block (lines 326-327)
+    const badPath = 1 as unknown as string;
+    expect(isHomeDirectory(badPath)).toBe(false);
   });
 });

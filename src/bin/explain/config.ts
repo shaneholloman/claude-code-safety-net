@@ -4,6 +4,7 @@
  */
 
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   getProjectConfigPath,
   getUserConfigPath,
@@ -56,7 +57,8 @@ export function getConfigSource(options?: GetConfigSourceOptions): {
  * Merges user options with environment variable defaults.
  */
 export function buildAnalyzeOptions(explainOptions?: ExplainOptions): AnalyzeOptions {
-  const cwd = explainOptions?.cwd ?? process.cwd();
+  // Resolve to absolute path - relative paths break cwd comparison logic
+  const cwd = resolve(explainOptions?.cwd ?? process.cwd());
   const paranoidAll = envTruthy('SAFETY_NET_PARANOID');
   return {
     cwd,

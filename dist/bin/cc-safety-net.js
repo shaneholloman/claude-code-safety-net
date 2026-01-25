@@ -2305,7 +2305,23 @@ function analyzeGitWorktree(tokens) {
 // src/core/rules-rm.ts
 import { realpathSync } from "node:fs";
 import { homedir as homedir3, tmpdir } from "node:os";
-import { normalize, resolve as resolve2 } from "node:path";
+import { normalize, resolve as resolve2, sep } from "node:path";
+var IS_WINDOWS = process.platform === "win32";
+function normalizePathForComparison(p) {
+  let normalized = normalize(p);
+  if (IS_WINDOWS) {
+    normalized = normalized.replace(/\//g, "\\");
+    normalized = normalized.toLowerCase();
+    if (normalized.length > 3 && normalized.endsWith("\\")) {
+      normalized = normalized.slice(0, -1);
+    }
+  } else {
+    if (normalized.length > 1 && normalized.endsWith("/")) {
+      normalized = normalized.slice(0, -1);
+    }
+  }
+  return normalized;
+}
 var REASON_RM_RF = "rm -rf outside cwd is blocked. Use explicit paths within the current directory, or delete manually.";
 var REASON_RM_RF_ROOT_HOME = "rm -rf targeting root or home directory is extremely dangerous and always blocked.";
 function analyzeRm(tokens, options = {}) {
@@ -2430,7 +2446,9 @@ function isTempTarget(path, allowTmpdirVar) {
     return true;
   }
   const systemTmpdir = tmpdir();
-  if (normalized.startsWith(`${systemTmpdir}/`) || normalized === systemTmpdir) {
+  const normalizedTmpdir = normalizePathForComparison(systemTmpdir);
+  const pathToCompare = normalizePathForComparison(normalized);
+  if (pathToCompare.startsWith(`${normalizedTmpdir}${sep}`) || pathToCompare === normalizedTmpdir) {
     return true;
   }
   if (allowTmpdirVar) {
@@ -2448,27 +2466,24 @@ function getHomeDirForRmPolicy() {
 }
 function isCwdHomeForRmPolicy(cwd, homeDir) {
   try {
-    const normalizedCwd = normalize(cwd);
-    const normalizedHome = normalize(homeDir);
-    return normalizedCwd === normalizedHome;
+    return normalizePathForComparison(cwd) === normalizePathForComparison(homeDir);
   } catch {
     return false;
   }
 }
 function isCwdSelfTarget(target, cwd) {
-  if (target === "." || target === "./") {
+  if (target === "." || target === "./" || target === ".\\") {
     return true;
   }
   try {
     const resolved = resolve2(cwd, target);
     const realCwd = realpathSync(cwd);
     const realResolved = realpathSync(resolved);
-    return realResolved === realCwd;
+    return normalizePathForComparison(realResolved) === normalizePathForComparison(realCwd);
   } catch {
     try {
       const resolved = resolve2(cwd, target);
-      const normalizedCwd = normalize(cwd);
-      return resolved === normalizedCwd;
+      return normalizePathForComparison(resolved) === normalizePathForComparison(cwd);
     } catch {
       return false;
     }
@@ -2482,20 +2497,21 @@ function isTargetWithinCwd(target, originalCwd, effectiveCwd) {
   if (target.includes("$") || target.includes("`")) {
     return false;
   }
-  if (target.startsWith("/")) {
+  if (target.startsWith("/") || /^[A-Za-z]:[\\/]/.test(target)) {
     try {
-      const normalizedTarget = normalize(target);
-      const normalizedCwd = `${normalize(originalCwd)}/`;
+      const normalizedTarget = normalizePathForComparison(target);
+      const normalizedCwd = `${normalizePathForComparison(originalCwd)}${sep}`;
       return normalizedTarget.startsWith(normalizedCwd);
     } catch {
       return false;
     }
   }
-  if (target.startsWith("./") || !target.includes("/")) {
+  if (target.startsWith("./") || target.startsWith(".\\") || !target.includes("/") && !target.includes("\\")) {
     try {
       const resolved = resolve2(resolveCwd, target);
-      const normalizedOriginalCwd = normalize(originalCwd);
-      return resolved.startsWith(`${normalizedOriginalCwd}/`) || resolved === normalizedOriginalCwd;
+      const normalizedResolved = normalizePathForComparison(resolved);
+      const normalizedOriginalCwd = normalizePathForComparison(originalCwd);
+      return normalizedResolved.startsWith(`${normalizedOriginalCwd}${sep}`) || normalizedResolved === normalizedOriginalCwd;
     } catch {
       return false;
     }
@@ -2505,8 +2521,9 @@ function isTargetWithinCwd(target, originalCwd, effectiveCwd) {
   }
   try {
     const resolved = resolve2(resolveCwd, target);
-    const normalizedCwd = normalize(originalCwd);
-    return resolved.startsWith(`${normalizedCwd}/`) || resolved === normalizedCwd;
+    const normalizedResolved = normalizePathForComparison(resolved);
+    const normalizedCwd = normalizePathForComparison(originalCwd);
+    return normalizedResolved.startsWith(`${normalizedCwd}${sep}`) || normalizedResolved === normalizedCwd;
   } catch {
     return false;
   }
@@ -2514,9 +2531,7 @@ function isTargetWithinCwd(target, originalCwd, effectiveCwd) {
 function isHomeDirectory(cwd) {
   const home = process.env.HOME ?? homedir3();
   try {
-    const normalizedCwd = normalize(cwd);
-    const normalizedHome = normalize(home);
-    return normalizedCwd === normalizedHome;
+    return normalizePathForComparison(cwd) === normalizePathForComparison(home);
   } catch {
     return false;
   }
@@ -3608,6 +3623,7 @@ function printReport(report) {
 
 // src/bin/explain/config.ts
 import { existsSync as existsSync5 } from "node:fs";
+import { resolve as resolve3 } from "node:path";
 
 // src/core/env.ts
 function envTruthy(name) {
@@ -3637,7 +3653,7 @@ function getConfigSource(options) {
   return { configSource: null, configValid: true };
 }
 function buildAnalyzeOptions(explainOptions) {
-  const cwd = explainOptions?.cwd ?? process.cwd();
+  const cwd = resolve3(explainOptions?.cwd ?? process.cwd());
   const paranoidAll = envTruthy("SAFETY_NET_PARANOID");
   return {
     cwd,
@@ -4852,7 +4868,7 @@ async function readStdinAsync() {
   if (process.stdin.isTTY) {
     return null;
   }
-  return new Promise((resolve3) => {
+  return new Promise((resolve4) => {
     let data = "";
     process.stdin.setEncoding("utf-8");
     process.stdin.on("data", (chunk) => {
@@ -4860,10 +4876,10 @@ async function readStdinAsync() {
     });
     process.stdin.on("end", () => {
       const trimmed = data.trim();
-      resolve3(trimmed || null);
+      resolve4(trimmed || null);
     });
     process.stdin.on("error", () => {
-      resolve3(null);
+      resolve4(null);
     });
   });
 }
@@ -4927,7 +4943,7 @@ async function printStatusline() {
 
 // src/bin/verify-config.ts
 import { existsSync as existsSync8, readFileSync as readFileSync6, writeFileSync } from "node:fs";
-import { resolve as resolve3 } from "node:path";
+import { resolve as resolve4 } from "node:path";
 var HEADER = "Safety Net Config";
 var SEPARATOR = "═".repeat(HEADER.length);
 var SCHEMA_URL = "https://raw.githubusercontent.com/kenryu42/claude-code-safety-net/main/assets/cc-safety-net.schema.json";
@@ -4992,7 +5008,7 @@ function verifyConfig(options = {}) {
     const result = validateConfigFile(projectConfig);
     configsChecked.push({
       scope: "Project",
-      path: resolve3(projectConfig),
+      path: resolve4(projectConfig),
       result
     });
     if (result.errors.length > 0) {
