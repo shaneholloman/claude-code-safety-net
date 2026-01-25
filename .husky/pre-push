@@ -9,7 +9,7 @@ bun run build
 # Auto-commit dist/ if it changed after build
 if ! git diff --quiet dist/; then
   echo "📦 dist/ changed, auto-committing..."
-  git add dist/*
+  git add -A dist/
   git commit -m "chore: sync dist" --no-verify
   echo "✅ Committed dist/ changes"
 fi
