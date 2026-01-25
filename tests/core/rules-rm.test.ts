@@ -2,7 +2,7 @@ import { describe, expect, test } from 'bun:test';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { analyzeRm } from '@/core/rules-rm';
+import { analyzeRm, isHomeDirectory } from '@/core/rules-rm';
 import { assertAllowed, assertBlocked, toShellPath, withEnv } from '../helpers.ts';
 
 describe('rm -rf blocked', () => {
@@ -498,5 +498,28 @@ describe('analyzeRm (unit)', () => {
   test('blocks rm -rf in home cwd via direct analyzeRm call', () => {
     const home = homedir();
     expect(analyzeRm(['rm', '-rf', 'somefile'], { cwd: home })).toContain('extremely dangerous');
+  });
+
+  test('handles paths with separators and bad cwd defensively', () => {
+    // 'foo/bar' has separators but doesn't start with ./, hitting the final try-catch (line 317)
+    const badCwd = 1 as unknown as string;
+    expect(analyzeRm(['rm', '-rf', 'foo/bar'], { cwd: badCwd })).toContain('rm -rf outside cwd');
+  });
+});
+
+describe('isHomeDirectory (unit)', () => {
+  test('returns true for home directory', () => {
+    const home = homedir();
+    expect(isHomeDirectory(home)).toBe(true);
+  });
+
+  test('returns false for non-home directory', () => {
+    expect(isHomeDirectory('/tmp')).toBe(false);
+  });
+
+  test('handles invalid input gracefully', () => {
+    // Pass a non-string to trigger the catch block (lines 326-327)
+    const badPath = 1 as unknown as string;
+    expect(isHomeDirectory(badPath)).toBe(false);
   });
 });
