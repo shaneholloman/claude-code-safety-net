@@ -9,7 +9,8 @@ const IS_WINDOWS = process.platform === 'win32';
 /**
  * Normalize a path for comparison: uses Node's normalize, then on Windows
  * converts forward slashes to backslashes and lowercases for case-insensitive
- * comparison.
+ * comparison. Strips trailing separators to prevent double-separator issues
+ * in prefix checks, while preserving root paths (/ or C:\).
  */
 function normalizePathForComparison(p: string): string {
   let normalized = normalize(p);
@@ -18,6 +19,15 @@ function normalizePathForComparison(p: string): string {
     normalized = normalized.replace(/\//g, '\\');
     // Windows paths are case-insensitive
     normalized = normalized.toLowerCase();
+    // Strip trailing backslashes, but preserve drive root (e.g., "C:\")
+    if (normalized.length > 3 && normalized.endsWith('\\')) {
+      normalized = normalized.slice(0, -1);
+    }
+  } else {
+    // Strip trailing slashes, but preserve root "/"
+    if (normalized.length > 1 && normalized.endsWith('/')) {
+      normalized = normalized.slice(0, -1);
+    }
   }
   return normalized;
 }
