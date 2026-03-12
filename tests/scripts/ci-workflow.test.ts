@@ -69,10 +69,10 @@ describe('CI workflow trigger filters', () => {
     }
   });
 
-  test('push does not include generated release artifacts', () => {
+  test('push includes schema assets so auto-commits retrigger CI', () => {
     const pushPaths = extractPaths(readWorkflow(), 'push');
 
-    expect(pushPaths).not.toContain('assets/**');
+    expect(pushPaths).toContain('assets/**');
     expect(pushPaths).toContain('package.json');
   });
 

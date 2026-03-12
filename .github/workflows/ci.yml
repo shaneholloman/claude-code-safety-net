@@ -9,6 +9,7 @@ on:
       - "src/**"
       - "scripts/**"
       - "tests/**"
+      - "assets/**"
       - "package.json"
       - "bun.lock"
       - "tsconfig.json"
