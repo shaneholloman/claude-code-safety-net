@@ -95,6 +95,14 @@ describe('git checkout', () => {
     assertBlocked('git checkout -q main file.txt', 'multiple positional args');
   });
 
+  test('git checkout --no-quiet ref pathspec blocked', () => {
+    assertBlocked('git checkout --no-quiet main file.txt', 'multiple positional args');
+  });
+
+  test('git checkout --guess ref pathspec blocked', () => {
+    assertBlocked('git checkout --guess main file.txt', 'multiple positional args');
+  });
+
   test('git checkout --recurse-submodules=checkout allowed', () => {
     assertAllowed('git checkout --recurse-submodules=checkout main');
   });
@@ -105,6 +113,10 @@ describe('git checkout', () => {
 
   test('git checkout --recurse-submodules ref pathspec blocked', () => {
     assertBlocked('git checkout --recurse-submodules main file.txt', 'multiple positional args');
+  });
+
+  test('git checkout --no-recurse-submodules ref pathspec blocked', () => {
+    assertBlocked('git checkout --no-recurse-submodules main file.txt', 'multiple positional args');
   });
 
   test('git checkout --recurse-submodules without mode allowed', () => {
@@ -159,12 +171,16 @@ describe('git checkout', () => {
     assertAllowed('git checkout --unified 3 main');
   });
 
+  test('git checkout --inter-hunk-context 3 allowed', () => {
+    assertAllowed('git checkout --inter-hunk-context 3 main');
+  });
+
   test('git checkout -U attached value allowed', () => {
     assertAllowed('git checkout -U3 main');
   });
 
-  test('git checkout unknown long option consumes value allowed', () => {
-    assertAllowed('git checkout --unknown main file.txt');
+  test('git checkout unknown long option ref pathspec blocked', () => {
+    assertBlocked('git checkout --unknown main file.txt', 'multiple positional args');
   });
 
   test('git checkout unknown long option does not consume option value allowed', () => {
