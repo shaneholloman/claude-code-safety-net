@@ -27,7 +27,7 @@
     "publish:dry-run": "bun run scripts/publish.ts --dry-run",
     "cc-safety-net": "bun run src/bin/cc-safety-net.ts",
     "prepare": "husky && bun run setup-hooks",
-    "setup-hooks": "bun -e 'await Bun.write(\".husky/pre-commit\", \"#!/usr/bin/env sh\\n\\nbun run knip && bun run lint-staged\\n\")' && chmod +x .husky/pre-commit"
+    "setup-hooks": "chmod +x .husky/pre-commit .husky/pre-push"
   },
   "author": {
     "name": "J Liew",

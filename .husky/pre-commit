@@ -1,3 +1,12 @@
 #!/usr/bin/env sh
+set -e
 
-bun run knip && bun run lint-staged
+bun run knip
+bun run lint-staged
+
+# Build and auto-stage dist/ if it changed
+bun run build
+dist_status="$(git status --porcelain --untracked-files=all dist/)"
+if [ -n "$dist_status" ]; then
+  git add -A dist/
+fi

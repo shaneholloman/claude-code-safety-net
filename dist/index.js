@@ -905,6 +905,7 @@ var CHECKOUT_OPTS_WITH_VALUE = new Set([
   "-B",
   "--orphan",
   "--conflict",
+  "--inter-hunk-context",
   "--pathspec-from-file",
   "--unified"
 ]);
@@ -912,22 +913,37 @@ var CHECKOUT_OPTS_WITH_OPTIONAL_VALUE = new Set(["--recurse-submodules", "--trac
 var CHECKOUT_KNOWN_OPTS_NO_VALUE = new Set([
   "-q",
   "--quiet",
+  "--no-quiet",
   "-f",
   "--force",
+  "--no-force",
   "-d",
   "--detach",
+  "--no-detach",
   "-m",
   "--merge",
+  "--no-merge",
   "-p",
   "--patch",
+  "--no-patch",
+  "--guess",
+  "--no-guess",
+  "--overlay",
+  "--no-overlay",
   "--ours",
   "--theirs",
+  "--ignore-skip-worktree-bits",
+  "--no-ignore-skip-worktree-bits",
   "--no-track",
   "--overwrite-ignore",
   "--no-overwrite-ignore",
   "--ignore-other-worktrees",
+  "--no-ignore-other-worktrees",
   "--progress",
-  "--no-progress"
+  "--no-progress",
+  "--pathspec-file-nul",
+  "--no-pathspec-file-nul",
+  "--no-recurse-submodules"
 ]);
 function splitAtDoubleDash(tokens) {
   const index = tokens.indexOf("--");
@@ -1057,12 +1073,7 @@ function getCheckoutPositionalArgs(tokens) {
           i++;
         }
       } else if (token.startsWith("--") && !CHECKOUT_KNOWN_OPTS_NO_VALUE.has(token) && !CHECKOUT_OPTS_WITH_VALUE.has(token) && !CHECKOUT_OPTS_WITH_OPTIONAL_VALUE.has(token)) {
-        const nextToken = tokens[i + 1];
-        if (nextToken && !nextToken.startsWith("-")) {
-          i += 2;
-        } else {
-          i++;
-        }
+        i++;
       } else {
         i++;
       }

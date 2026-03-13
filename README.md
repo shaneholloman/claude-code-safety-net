@@ -390,6 +390,7 @@ npx cc-safety-net explain --cwd /tmp "git status"
 |-----------------|-------------------|
 | git checkout -- files | Discards uncommitted changes permanently |
 | git checkout \<ref\> -- \<path\> | Overwrites working tree with ref version |
+| git checkout \<ref\> \<path\> | May overwrite working tree when Git disambiguates ref vs pathspec |
 | git restore files | Discards uncommitted changes |
 | git restore --worktree | Explicitly discards working tree changes |
 | git reset --hard | Destroys all uncommitted changes |
