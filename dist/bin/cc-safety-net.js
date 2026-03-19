@@ -3970,7 +3970,13 @@ function checkCopilotEnabled(homeDir, cwd, errors) {
   for (const dirPath of directories) {
     if (!existsSync4(dirPath))
       continue;
-    const filenames = readdirSync2(dirPath).filter((name) => name.endsWith(".json")).sort((a, b) => a.localeCompare(b));
+    let filenames;
+    try {
+      filenames = readdirSync2(dirPath).filter((name) => name.endsWith(".json")).sort((a, b) => a.localeCompare(b));
+    } catch (e) {
+      errors.push(`Failed to read ${dirPath}: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
     for (const filename of filenames) {
       const configPath = join3(dirPath, filename);
       try {

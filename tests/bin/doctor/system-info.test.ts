@@ -21,6 +21,9 @@ describe('getSystemInfo', () => {
     expect(sysInfo.geminiCliVersion === null || typeof sysInfo.geminiCliVersion === 'string').toBe(
       true,
     );
+    expect(
+      sysInfo.copilotCliVersion === null || typeof sysInfo.copilotCliVersion === 'string',
+    ).toBe(true);
     expect(sysInfo.nodeVersion === null || typeof sysInfo.nodeVersion === 'string').toBe(true);
     expect(sysInfo.npmVersion === null || typeof sysInfo.npmVersion === 'string').toBe(true);
     expect(sysInfo.bunVersion === null || typeof sysInfo.bunVersion === 'string').toBe(true);
@@ -31,29 +34,16 @@ describe('getSystemInfo', () => {
     expect(sysInfo.bunVersion).toBe('1.0.0');
   });
 
-  test('uses real fetcher by default and detects bun', async () => {
-    const sysInfo = await getSystemInfo();
-    expect(sysInfo.bunVersion).toMatch(/^\d+\.\d+/);
-    expect(sysInfo.platform).toContain(process.platform);
-  }, 15000);
-
-  test('handles non-existent commands gracefully', async () => {
-    const sysInfo = await getSystemInfo();
-    expect(
-      sysInfo.claudeCodeVersion === null || typeof sysInfo.claudeCodeVersion === 'string',
-    ).toBe(true);
-    expect(sysInfo.openCodeVersion === null || typeof sysInfo.openCodeVersion === 'string').toBe(
-      true,
-    );
-    expect(sysInfo.geminiCliVersion === null || typeof sysInfo.geminiCliVersion === 'string').toBe(
-      true,
-    );
-  }, 15000);
+  test('includes Copilot CLI version with mock fetcher', async () => {
+    const sysInfo = await getSystemInfo(mockVersionFetcher);
+    expect(sysInfo.copilotCliVersion).toBe('0.30.0');
+  });
 
   test('handles commands that exit with non-zero code', async () => {
     const failingFetcher = async (_args: string[]) => null;
     const result = await getSystemInfo(failingFetcher);
     expect(result.claudeCodeVersion).toBeNull();
+    expect(result.copilotCliVersion).toBeNull();
     expect(result.bunVersion).toBeNull();
     expect(result.nodeVersion).toBeNull();
   });
@@ -62,6 +52,7 @@ describe('getSystemInfo', () => {
     const emptyFetcher = async (_args: string[]) => '';
     const result = await getSystemInfo(emptyFetcher);
     expect(result.claudeCodeVersion).toBeNull();
+    expect(result.copilotCliVersion).toBeNull();
     expect(result.bunVersion).toBeNull();
   });
 });
@@ -91,10 +82,24 @@ describe('defaultVersionFetcher', () => {
     expect(result).toMatch(/^\d+\.\d+/);
   });
 
+  test('returns null for commands that time out', async () => {
+    const startedAt = Date.now();
+    const result = await defaultVersionFetcher(['bun', '-e', 'setTimeout(() => {}, 3000)']);
+    const durationMs = Date.now() - startedAt;
+
+    expect(result).toBeNull();
+    expect(durationMs).toBeLessThan(2800);
+  }, 5000);
+
   test('returns null for commands that exit with non-zero code', async () => {
     const result = await defaultVersionFetcher(['false']);
     expect(result).toBeNull();
   });
+
+  test('detects bun version with the real fetcher', async () => {
+    const result = await defaultVersionFetcher(['bun', '--version']);
+    expect(result).toMatch(/^\d+\.\d+/);
+  }, 5000);
 });
 
 describe('version comparison', () => {

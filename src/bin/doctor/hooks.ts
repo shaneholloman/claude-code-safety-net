@@ -2,7 +2,7 @@
  * Hook detection with integrated self-test for the doctor command.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { HookStatus, SelfTestCase, SelfTestResult, SelfTestSummary } from '@/bin/doctor/types';
@@ -12,6 +12,18 @@ import type { Config } from '@/types';
 
 interface HookDetectOptions extends LoadConfigOptions {
   homeDir?: string;
+}
+
+interface CopilotHookEntry {
+  type?: string;
+  bash?: string;
+  powershell?: string;
+}
+
+interface CopilotHookConfig {
+  hooks?: {
+    preToolUse?: CopilotHookEntry[];
+  };
 }
 
 /** Self-test cases for validating the analyzer */
@@ -398,11 +410,94 @@ function detectGeminiCLI(homeDir: string, cwd: string): HookStatus {
   };
 }
 
+function isSafetyNetCopilotCommand(command: string | undefined): boolean {
+  if (!command?.includes('cc-safety-net')) return false;
+  return /(^|\s)(--copilot-cli|-cp)(\s|$)/.test(command);
+}
+
+/**
+ * Check if Copilot CLI hooks are enabled via local or global hook files.
+ * Returns true when a hook config invokes Safety Net for preToolUse.
+ */
+function checkCopilotEnabled(
+  homeDir: string,
+  cwd: string,
+  errors: string[],
+): { enabled: boolean; configPath?: string } {
+  const directories = [join(cwd, '.github', 'hooks'), join(homeDir, '.copilot', 'hooks')];
+
+  for (const dirPath of directories) {
+    if (!existsSync(dirPath)) continue;
+
+    let filenames: string[];
+    try {
+      filenames = readdirSync(dirPath)
+        .filter((name) => name.endsWith('.json'))
+        .sort((a, b) => a.localeCompare(b));
+    } catch (e) {
+      errors.push(`Failed to read ${dirPath}: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
+
+    for (const filename of filenames) {
+      const configPath = join(dirPath, filename);
+
+      try {
+        const config = JSON.parse(readFileSync(configPath, 'utf-8')) as CopilotHookConfig;
+        const preToolUseHooks = config.hooks?.preToolUse ?? [];
+        const hasSafetyNetHook = preToolUseHooks.some((hook) => {
+          if (hook.type !== 'command') return false;
+          return isSafetyNetCopilotCommand(hook.bash) || isSafetyNetCopilotCommand(hook.powershell);
+        });
+
+        if (hasSafetyNetHook) {
+          return { enabled: true, configPath };
+        }
+      } catch (e) {
+        errors.push(`Failed to parse ${configPath}: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
+  }
+
+  return { enabled: false };
+}
+
+/**
+ * Detect Copilot CLI hook configuration.
+ * Copilot only has 'configured' or 'n/a' status (no disabled state).
+ */
+function detectCopilotCLI(homeDir: string, cwd: string): HookStatus {
+  const errors: string[] = [];
+  const hooksCheck = checkCopilotEnabled(homeDir, cwd, errors);
+
+  if (hooksCheck.enabled) {
+    return {
+      platform: 'copilot-cli',
+      status: 'configured',
+      method: 'hook config',
+      configPath: hooksCheck.configPath,
+      selfTest: runSelfTest(),
+      errors: errors.length > 0 ? errors : undefined,
+    };
+  }
+
+  return {
+    platform: 'copilot-cli',
+    status: 'n/a',
+    errors: errors.length > 0 ? errors : undefined,
+  };
+}
+
 /**
  * Detect all hooks and run self-tests for configured ones.
  */
 export function detectAllHooks(cwd: string, options?: HookDetectOptions): HookStatus[] {
   const homeDir = options?.homeDir ?? homedir();
 
-  return [detectClaudeCode(homeDir), detectOpenCode(homeDir), detectGeminiCLI(homeDir, cwd)];
+  return [
+    detectClaudeCode(homeDir),
+    detectOpenCode(homeDir),
+    detectGeminiCLI(homeDir, cwd),
+    detectCopilotCLI(homeDir, cwd),
+  ];
 }

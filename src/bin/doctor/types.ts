@@ -3,7 +3,7 @@
  */
 
 /** Hook platform identifiers */
-export type HookPlatform = 'claude-code' | 'opencode' | 'gemini-cli';
+export type HookPlatform = 'claude-code' | 'opencode' | 'gemini-cli' | 'copilot-cli';
 
 /** Self-test case definition */
 export interface SelfTestCase {
@@ -109,6 +109,8 @@ export interface SystemInfo {
   openCodeVersion: string | null;
   /** Gemini CLI version (from `gemini --version`) */
   geminiCliVersion: string | null;
+  /** Copilot CLI version (from `copilot --version`) */
+  copilotCliVersion: string | null;
   /** Node.js version (from `node --version`) */
   nodeVersion: string | null;
   /** npm version (from `npm --version`) */

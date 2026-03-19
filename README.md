@@ -210,7 +210,7 @@ gemini extensions install https://github.com/kenryu42/gemini-safety-net
 Safety Net supports GitHub Copilot CLI via its [hooks system](https://docs.github.com/en/copilot/concepts/agents/coding-agent/about-hooks).
 
 > [!NOTE]
-> Copilot CLI hooks must be installed at the **project level** (in each repository). User-level hooks (`~/.github/hooks/` or `~/.copilot/hooks/`) are not currently supported by Copilot CLI. See [copilot-cli#1067](https://github.com/github/copilot-cli/issues/1067) to track progress on user-level hook support.
+> Safety Net can be configured from either project hooks in `.github/hooks/*.json` or global hooks in `~/.copilot/hooks/*.json`.
 
 1. **Create the hooks directory** in your repository:
 

@@ -8,6 +8,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { detectAllHooks, stripJsonComments } from '@/bin/doctor/hooks';
 
+function writeCopilotHook(
+  filePath: string,
+  command: string = 'npx -y cc-safety-net --copilot-cli',
+  commandKey: 'bash' | 'powershell' = 'bash',
+): void {
+  writeFileSync(
+    filePath,
+    JSON.stringify({
+      version: 1,
+      hooks: {
+        preToolUse: [
+          {
+            type: 'command',
+            [commandKey]: command,
+            cwd: '.',
+            timeoutSec: 15,
+          },
+        ],
+      },
+    }),
+  );
+}
+
 describe('detectAllHooks', () => {
   test('detects configured hooks and runs self-test', () => {
     const tmpBase = join(tmpdir(), `doctor-hooks-${Date.now()}`);
@@ -51,6 +74,10 @@ describe('detectAllHooks', () => {
       }),
     );
 
+    const copilotDir = join(projectDir, '.github', 'hooks');
+    mkdirSync(copilotDir, { recursive: true });
+    writeCopilotHook(join(copilotDir, 'safety-net.json'));
+
     try {
       const hooks = detectAllHooks(projectDir, { homeDir });
 
@@ -68,6 +95,11 @@ describe('detectAllHooks', () => {
       expect(gemini?.status).toBe('configured');
       expect(gemini?.method).toBe('extension plugin');
       expect(gemini?.selfTest?.passed).toBe(gemini?.selfTest?.total);
+
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.method).toBe('hook config');
+      expect(copilot?.selfTest?.passed).toBe(copilot?.selfTest?.total);
     } finally {
       rmSync(tmpBase, { recursive: true, force: true });
     }
@@ -355,6 +387,177 @@ describe('detectAllHooks', () => {
       expect(gemini?.status).toBe('n/a');
       expect(gemini?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
       expect(gemini?.errors?.some((e) => e.includes('tools.enableHooks'))).toBe(true);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: configured from local project hook config', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const copilotDir = join(projectDir, '.github', 'hooks');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(copilotDir, { recursive: true });
+    writeCopilotHook(join(copilotDir, 'safety-net.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(copilotDir, 'safety-net.json'));
+      expect(copilot?.selfTest?.failed).toBe(0);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: configured from global hook config', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const copilotDir = join(homeDir, '.copilot', 'hooks');
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(copilotDir, { recursive: true });
+    writeCopilotHook(join(copilotDir, 'global.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(copilotDir, 'global.json'));
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: local project config takes precedence over global config', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const localDir = join(projectDir, '.github', 'hooks');
+    const globalDir = join(homeDir, '.copilot', 'hooks');
+    mkdirSync(localDir, { recursive: true });
+    mkdirSync(globalDir, { recursive: true });
+    writeCopilotHook(join(globalDir, 'global.json'));
+    writeCopilotHook(join(localDir, 'local.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(localDir, 'local.json'));
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: continues checking files after parse errors', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const copilotDir = join(projectDir, '.github', 'hooks');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(copilotDir, { recursive: true });
+    writeFileSync(join(copilotDir, 'broken.json'), '{ invalid json }');
+    writeCopilotHook(join(copilotDir, 'safety-net.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
+      expect(copilot?.configPath).toBe(join(copilotDir, 'safety-net.json'));
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: ignores non-Safety Net preToolUse hooks', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const copilotDir = join(projectDir, '.github', 'hooks');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(copilotDir, { recursive: true });
+    writeCopilotHook(join(copilotDir, 'other.json'), 'echo safe');
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('n/a');
+      expect(copilot?.selfTest).toBeUndefined();
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: supports powershell hook commands', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const copilotDir = join(projectDir, '.github', 'hooks');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(copilotDir, { recursive: true });
+    writeCopilotHook(
+      join(copilotDir, 'powershell.json'),
+      'npx -y cc-safety-net --copilot-cli',
+      'powershell',
+    );
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(copilotDir, 'powershell.json'));
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: reports parse errors when all hook files are invalid', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const copilotDir = join(projectDir, '.github', 'hooks');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(copilotDir, { recursive: true });
+    writeFileSync(join(copilotDir, 'bad1.json'), '{ invalid }');
+    writeFileSync(join(copilotDir, 'bad2.json'), 'not json');
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('n/a');
+      expect(copilot?.errors?.length).toBe(2);
+      expect(copilot?.errors?.every((e) => e.includes('Failed to parse'))).toBe(true);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: supports the short -cp flag', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const copilotDir = join(projectDir, '.github', 'hooks');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(copilotDir, { recursive: true });
+    writeCopilotHook(join(copilotDir, 'short-flag.json'), 'bunx cc-safety-net -cp');
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(copilotDir, 'short-flag.json'));
     } finally {
       rmSync(tmpBase, { recursive: true, force: true });
     }

@@ -73,6 +73,7 @@ export const mockVersionFetcher: VersionFetcher = async (args: string[]) => {
     claude: '1.0.0',
     opencode: '0.1.0',
     gemini: '0.20.0',
+    copilot: '0.30.0',
     node: 'v22.0.0',
     npm: '10.0.0',
     bun: '1.0.0',
