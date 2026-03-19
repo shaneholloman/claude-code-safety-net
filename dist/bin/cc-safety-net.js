@@ -1569,6 +1569,7 @@ var $parse = require_parse();
 var ENV_PROXY = new Proxy({}, {
   get: (_, name) => `$${String(name)}`
 });
+var ARITHMETIC_SENTINEL = "__CC_SAFETY_NET_ARITH_SENTINEL__";
 function splitShellCommands(command) {
   if (hasUnclosedQuotes(command)) {
     return [[command]];
@@ -1589,7 +1590,11 @@ function splitShellCommands(command) {
       continue;
     }
     if (_isRedirectOp(token)) {
-      i += _getRedirectAdvance(tokens, i);
+      const { redirectTarget, advance } = _getRedirectTargetInfo(tokens, i);
+      if (redirectTarget !== null) {
+        _pushInlineSubstitutionSegments(segments, redirectTarget);
+      }
+      i += advance;
       continue;
     }
     if (_isCommandSubstitutionStart(tokens, i)) {
@@ -1608,12 +1613,7 @@ function splitShellCommands(command) {
       i++;
       continue;
     }
-    const backtickSegments = extractBacktickSubstitutions(token);
-    if (backtickSegments.length > 0) {
-      for (const seg of backtickSegments) {
-        segments.push(seg);
-      }
-    }
+    _pushInlineSubstitutionSegments(segments, token);
     current.push(token);
     i++;
   }
@@ -1643,6 +1643,56 @@ function extractBacktickSubstitutions(token) {
   }
   return segments;
 }
+function extractInlineCommandSubstitutions(token) {
+  const segments = [];
+  let i = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+  while (i < token.length) {
+    const char = token[i];
+    if (!char) {
+      break;
+    }
+    if (escaped) {
+      escaped = false;
+      i++;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      i++;
+      continue;
+    }
+    if (!inDouble && char === "'") {
+      inSingle = !inSingle;
+      i++;
+      continue;
+    }
+    if (!inSingle && char === '"') {
+      inDouble = !inDouble;
+      i++;
+      continue;
+    }
+    if (!inSingle && char === "$" && token[i + 1] === "(" && token[i + 2] !== "(") {
+      const end = _findInlineCommandSubstitutionEnd(token, i + 2);
+      if (end === -1) {
+        break;
+      }
+      const innerCommand = token.slice(i + 2, end);
+      if (innerCommand.trim()) {
+        const innerSegments = splitShellCommands(innerCommand);
+        for (const seg of innerSegments) {
+          segments.push(seg);
+        }
+      }
+      i = end + 1;
+      continue;
+    }
+    i++;
+  }
+  return segments;
+}
 function isParenOpen(token) {
   return typeof token === "object" && token !== null && "op" in token && token.op === "(";
 }
@@ -1650,6 +1700,9 @@ function isParenClose(token) {
   return typeof token === "object" && token !== null && "op" in token && token.op === ")";
 }
 function extractCommandSubstitution(tokens, startIndex) {
+  if (tokens[startIndex] === ARITHMETIC_SENTINEL) {
+    return _extractArithmeticSubstitution(tokens, startIndex);
+  }
   const innerSegments = [];
   let currentSegment = [];
   let depth = 1;
@@ -1677,7 +1730,11 @@ function extractCommandSubstitution(tokens, startIndex) {
       continue;
     }
     if (depth === 1 && _isRedirectOp(token)) {
-      i += _getRedirectAdvance(tokens, i);
+      const { redirectTarget, advance } = _getRedirectTargetInfo(tokens, i);
+      if (redirectTarget !== null) {
+        _pushInlineSubstitutionSegments(innerSegments, redirectTarget);
+      }
+      i += advance;
       continue;
     }
     if (depth === 1 && _isCommandSubstitutionStart(tokens, i)) {
@@ -1701,6 +1758,89 @@ function extractCommandSubstitution(tokens, startIndex) {
     innerSegments.push(currentSegment);
   }
   return { innerSegments, endIndex: i };
+}
+function _extractArithmeticSubstitution(tokens, startIndex) {
+  const innerSegments = [];
+  let expression = "";
+  let depth = 1;
+  let i = startIndex + 1;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    if (_isCommandSubstitutionStart(tokens, i)) {
+      if (expression) {
+        innerSegments.push([expression]);
+        expression = "";
+      }
+      const { innerSegments: nestedSegments, endIndex } = extractCommandSubstitution(tokens, i + 2);
+      for (const seg of nestedSegments) {
+        innerSegments.push(seg);
+      }
+      i = endIndex + 1;
+      continue;
+    }
+    if (typeof token === "string" && token !== "$" && token.endsWith("$") && isParenOpen(tokens[i + 1])) {
+      expression += token.slice(0, -1);
+      if (expression) {
+        innerSegments.push([expression]);
+        expression = "";
+      }
+      const { innerSegments: nestedSegments, endIndex } = extractCommandSubstitution(tokens, i + 2);
+      for (const seg of nestedSegments) {
+        innerSegments.push(seg);
+      }
+      i = endIndex + 1;
+      continue;
+    }
+    if (isParenOpen(token)) {
+      depth++;
+      expression += "(";
+      i++;
+      continue;
+    }
+    if (isParenClose(token)) {
+      depth--;
+      if (depth === 0) {
+        return {
+          innerSegments: expression ? [...innerSegments, [expression]] : innerSegments,
+          endIndex: i
+        };
+      }
+      expression += ")";
+      i++;
+      continue;
+    }
+    if (typeof token === "string") {
+      _pushInlineSubstitutionSegments(innerSegments, token);
+      expression += token;
+      i++;
+      continue;
+    }
+    if (token && typeof token === "object") {
+      if ("pattern" in token && typeof token.pattern === "string") {
+        expression += token.pattern;
+        i++;
+        continue;
+      }
+      if ("op" in token) {
+        expression += String(token.op);
+      }
+    }
+    i++;
+  }
+  return {
+    innerSegments: expression ? [...innerSegments, [expression]] : innerSegments,
+    endIndex: i
+  };
+}
+function _pushInlineSubstitutionSegments(segments, token) {
+  const inlineSegments = extractInlineCommandSubstitutions(token);
+  for (const seg of inlineSegments) {
+    segments.push(seg);
+  }
+  const backtickSegments = extractBacktickSubstitutions(token);
+  for (const seg of backtickSegments) {
+    segments.push(seg);
+  }
 }
 function hasUnclosedQuotes(command) {
   let inSingle = false;
@@ -1729,6 +1869,7 @@ function _stripAttachedIoNumbers(command) {
   let inDouble = false;
   let escaped = false;
   let atTokenBoundary = true;
+  let arithmeticParenDepth = 0;
   for (let i = 0;i < command.length; ) {
     const char = command[i];
     if (!char) {
@@ -1762,6 +1903,37 @@ function _stripAttachedIoNumbers(command) {
       continue;
     }
     if (!inSingle && !inDouble) {
+      if (arithmeticParenDepth === 0 && command.startsWith("$((", i)) {
+        result += `$( ${ARITHMETIC_SENTINEL} `;
+        arithmeticParenDepth = 1;
+        atTokenBoundary = false;
+        i += 3;
+        continue;
+      }
+      if (arithmeticParenDepth > 0) {
+        if (char === "(") {
+          arithmeticParenDepth++;
+          result += char;
+        } else if (char === ")") {
+          arithmeticParenDepth--;
+          if (arithmeticParenDepth === 0) {
+            result += ")";
+            if (command[i + 1] === ")") {
+              i += 2;
+            } else {
+              i++;
+            }
+            atTokenBoundary = false;
+            continue;
+          }
+          result += char;
+        } else {
+          result += char;
+        }
+        atTokenBoundary = false;
+        i++;
+        continue;
+      }
       if (_isWhitespaceChar(char)) {
         result += char;
         atTokenBoundary = true;
@@ -2000,11 +2172,137 @@ function _isRedirectOp(token) {
 function _isCommandSubstitutionStart(tokens, index) {
   return tokens[index] === "$" && isParenOpen(tokens[index + 1]);
 }
-function _getRedirectAdvance(tokens, index) {
+function _getRedirectTargetInfo(tokens, index) {
   if (_isCommandSubstitutionStart(tokens, index + 1)) {
-    return 1;
+    return { redirectTarget: null, advance: 1 };
   }
-  return tokens[index + 1] === undefined ? 1 : 2;
+  const firstTarget = tokens[index + 1];
+  if (typeof firstTarget !== "string") {
+    return { redirectTarget: null, advance: firstTarget === undefined ? 1 : 2 };
+  }
+  let redirectTarget = firstTarget;
+  let nextIndex = index + 2;
+  if (firstTarget.endsWith("$") && isParenOpen(tokens[nextIndex])) {
+    const { text, consumed } = _collectParenthesizedTokens(tokens, nextIndex);
+    if (consumed > 0) {
+      redirectTarget += text;
+      nextIndex += consumed;
+    }
+  }
+  while (_hasUnclosedBackticks(redirectTarget)) {
+    const nextToken = tokens[nextIndex];
+    if (typeof nextToken !== "string") {
+      break;
+    }
+    redirectTarget += ` ${nextToken}`;
+    nextIndex++;
+  }
+  return {
+    redirectTarget,
+    advance: nextIndex - index
+  };
+}
+function _findInlineCommandSubstitutionEnd(token, startIndex) {
+  let depth = 1;
+  let i = startIndex;
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+  while (i < token.length) {
+    const char = token[i];
+    if (!char) {
+      break;
+    }
+    if (escaped) {
+      escaped = false;
+      i++;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      i++;
+      continue;
+    }
+    if (!inDouble && char === "'") {
+      inSingle = !inSingle;
+      i++;
+      continue;
+    }
+    if (!inSingle && char === '"') {
+      inDouble = !inDouble;
+      i++;
+      continue;
+    }
+    if (!inSingle && !inDouble) {
+      if (char === "(") {
+        depth++;
+      } else if (char === ")") {
+        depth--;
+        if (depth === 0) {
+          return i;
+        }
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+function _hasUnclosedBackticks(token) {
+  let inBacktick = false;
+  let escaped = false;
+  for (const char of token) {
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === "`") {
+      inBacktick = !inBacktick;
+    }
+  }
+  return inBacktick;
+}
+function _collectParenthesizedTokens(tokens, startIndex) {
+  if (!isParenOpen(tokens[startIndex])) {
+    return { text: "", consumed: 0 };
+  }
+  const parts = [];
+  let depth = 0;
+  let i = startIndex;
+  while (i < tokens.length) {
+    const token = tokens[i];
+    if (isParenOpen(token)) {
+      depth++;
+    } else if (isParenClose(token)) {
+      depth--;
+    }
+    const piece = _stringifyParseEntry(token);
+    if (piece) {
+      parts.push(piece);
+    }
+    i++;
+    if (depth === 0) {
+      break;
+    }
+  }
+  return { text: parts.join(" "), consumed: i - startIndex };
+}
+function _stringifyParseEntry(token) {
+  if (typeof token === "string") {
+    return token;
+  }
+  if (token && typeof token === "object") {
+    if ("op" in token) {
+      return String(token.op);
+    }
+    if ("pattern" in token && typeof token.pattern === "string") {
+      return token.pattern;
+    }
+  }
+  return "";
 }
 function _getRawRedirectOpLength(command, index) {
   for (const op of RAW_REDIRECT_OPS) {
