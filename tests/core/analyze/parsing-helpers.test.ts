@@ -220,6 +220,32 @@ describe('shell parsing helpers', () => {
       expect(rmResult).toContainEqual(['rm', '-rf', '/']);
     });
 
+    test('flushes arithmetic text before a spaced nested command substitution', () => {
+      expect(splitShellCommands('echo $((1 + $(git status)))')).toEqual([
+        ['echo'],
+        ['1+'],
+        ['git', 'status'],
+      ]);
+    });
+
+    test('keeps nested arithmetic parentheses intact', () => {
+      expect(splitShellCommands('echo $(((1+2)))')).toEqual([['echo'], ['(1+2)']]);
+    });
+
+    test('handles malformed arithmetic substitutions without hanging', () => {
+      expect(splitShellCommands('echo $((1+(2))')).toEqual([['echo'], ['1+(2)']]);
+      expect(splitShellCommands('echo $((1+2)')).toEqual([['echo'], ['1+2']]);
+    });
+
+    test('handles arithmetic substitutions that reach EOF without a closing parenthesis', () => {
+      expect(splitShellCommands('echo $((1+2')).toEqual([['echo'], ['1+2']]);
+      expect(splitShellCommands('echo $((1+$(git status)')).toEqual([
+        ['echo'],
+        ['1+'],
+        ['git', 'status'],
+      ]);
+    });
+
     test('does not treat quoted arithmetic expansion as command substitution', () => {
       expect(splitShellCommands('echo "$(( rm -rf /x ))"')).toEqual([['echo', '$(( rm -rf /x ))']]);
       expect(splitShellCommands('echo "$(( foo + bar ))"')).toEqual([['echo', '$(( foo + bar ))']]);
@@ -250,11 +276,74 @@ describe('shell parsing helpers', () => {
         ['rm', '-rf', '/tmp/foo'],
       ]);
     });
+
+    test('ignores missing redirect targets without creating empty segments', () => {
+      expect(splitShellCommands('echo >')).toEqual([['echo']]);
+    });
+
+    test('does not treat escaped or quoted inline substitutions as executable commands', () => {
+      expect(splitShellCommands('echo $(printf "x\\$(git status)y")')).toEqual([
+        ['echo'],
+        ['printf', 'x$(git status)y'],
+      ]);
+      expect(splitShellCommands('echo $(printf "x\'$(git status)\'y")')).toEqual([
+        ['echo'],
+        ['printf', "x'$(git status)'y"],
+      ]);
+      expect(splitShellCommands('echo $(printf "x\\"$(git status)\\"y")')).toEqual([
+        ['echo'],
+        ['printf', 'x"$(git status)"y'],
+      ]);
+    });
+
+    test('tracks nested parentheses inside inline command substitutions', () => {
+      expect(splitShellCommands('echo "x$(printf y(z))"')).toEqual([
+        ['printf', 'y', 'z'],
+        ['echo', 'x$(printf y(z))'],
+      ]);
+    });
+
+    test('tracks quoted and escaped content while scanning inline command substitutions', () => {
+      expect(splitShellCommands('echo "x$(printf \'y\')w"')).toEqual([
+        ['printf', 'y'],
+        ['echo', "x$(printf 'y')w"],
+      ]);
+      expect(splitShellCommands('echo \'x$(printf "y")w\'')).toEqual([
+        ['printf', 'y'],
+        ['echo', 'x$(printf "y")w'],
+      ]);
+      expect(splitShellCommands("echo 'x$(printf y\\(z\\))w'")).toEqual([
+        ['printf', 'y(z)'],
+        ['echo', 'x$(printf y\\(z\\))w'],
+      ]);
+      expect(splitShellCommands("echo 'x$(printf y(z)'")).toEqual([['echo', 'x$(printf y(z)']]);
+    });
+
+    test('preserves top level glob arguments', () => {
+      expect(splitShellCommands('git add *.ts')).toEqual([['git', 'add', '*.ts']]);
+    });
+
+    test('preserves glob arguments inside command substitutions', () => {
+      expect(splitShellCommands('echo $(git *.ts)')).toEqual([['echo'], ['git', '*.ts']]);
+    });
+
+    test('preserves glob arguments while reconstructing redirect target substitutions', () => {
+      expect(splitShellCommands('echo >foo$(git *.ts)')).toEqual([['git', '*.ts'], ['echo']]);
+    });
+
+    test('handles escaped backticks in redirect targets without hanging', () => {
+      expect(splitShellCommands('echo x >`a\\` b`')).toEqual([['a'], ['echo', 'x', 'b`']]);
+    });
   });
 
   describe('stripWrappersWithInfo', () => {
     test('strips sudo options that consume a value', () => {
       const result = stripWrappersWithInfo(['sudo', '-u', 'root', 'rm', '-rf', '/tmp/a']);
+      expect(result.tokens).toEqual(['rm', '-rf', '/tmp/a']);
+    });
+
+    test('strips sudo options that do not consume a value', () => {
+      const result = stripWrappersWithInfo(['sudo', '-n', 'rm', '-rf', '/tmp/a']);
       expect(result.tokens).toEqual(['rm', '-rf', '/tmp/a']);
     });
 
