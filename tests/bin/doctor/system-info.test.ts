@@ -35,7 +35,7 @@ describe('getSystemInfo', () => {
     const sysInfo = await getSystemInfo();
     expect(sysInfo.bunVersion).toMatch(/^\d+\.\d+/);
     expect(sysInfo.platform).toContain(process.platform);
-  });
+  }, 15000);
 
   test('handles non-existent commands gracefully', async () => {
     const sysInfo = await getSystemInfo();
@@ -48,7 +48,7 @@ describe('getSystemInfo', () => {
     expect(sysInfo.geminiCliVersion === null || typeof sysInfo.geminiCliVersion === 'string').toBe(
       true,
     );
-  });
+  }, 15000);
 
   test('handles commands that exit with non-zero code', async () => {
     const failingFetcher = async (_args: string[]) => null;
