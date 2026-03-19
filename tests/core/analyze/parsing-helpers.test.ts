@@ -97,6 +97,12 @@ describe('shell parsing helpers', () => {
       expect(splitShellCommands('echo $((1+2))')).toEqual([['echo'], ['1+2']]);
     });
 
+    test('keeps arithmetic comparisons and shifts intact inside substitutions', () => {
+      expect(splitShellCommands('echo $((2>1))')).toEqual([['echo'], ['2>1']]);
+      expect(splitShellCommands('echo $((123>>1))')).toEqual([['echo'], ['123>>1']]);
+      expect(splitShellCommands('echo $((1*2))')).toEqual([['echo'], ['1*2']]);
+    });
+
     test('extracts backtick substitution segments', () => {
       expect(splitShellCommands('echo `date`')).toEqual([['date'], ['echo', '`date`']]);
     });
@@ -119,6 +125,14 @@ describe('shell parsing helpers', () => {
       const flat = result.flat();
       expect(flat).toContain('rm');
       expect(flat).toContain('-rf');
+    });
+
+    test('treats grouped subshells inside command substitutions as commands, not arithmetic', () => {
+      expect(splitShellCommands('echo $( (git reset --hard) )')).toEqual([
+        ['echo'],
+        ['git', 'reset', '--hard'],
+      ]);
+      expect(splitShellCommands('echo $( (rm -rf /) )')).toEqual([['echo'], ['rm', '-rf', '/']]);
     });
 
     test('handles deeply nested $(...) substitutions', () => {
@@ -169,6 +183,64 @@ describe('shell parsing helpers', () => {
       expect(splitShellCommands('echo x >$(git reset --hard)')).toEqual([
         ['echo', 'x'],
         ['git', 'reset', '--hard'],
+      ]);
+    });
+
+    test('keeps attached command substitutions in redirect targets analyzable', () => {
+      expect(splitShellCommands('rm -rf /tmp/foo >file$(git reset --hard)')).toEqual([
+        ['git', 'reset', '--hard'],
+        ['rm', '-rf', '/tmp/foo'],
+      ]);
+      expect(splitShellCommands('rm -rf /tmp/foo >$TMPDIR/$(rm -rf /)')).toEqual([
+        ['rm', '-rf', '/'],
+        ['rm', '-rf', '/tmp/foo'],
+      ]);
+    });
+
+    test('keeps operands after redirects in the same segment', () => {
+      expect(splitShellCommands('rm -rf 2>/dev/null /')).toEqual([['rm', '-rf', '/']]);
+      expect(splitShellCommands('git checkout 2>/dev/null -- foo')).toEqual([
+        ['git', 'checkout', '--', 'foo'],
+      ]);
+    });
+
+    test('keeps nested command substitutions visible inside arithmetic expansion', () => {
+      const gitResult = splitShellCommands('echo $(( $(git reset --hard) + 1 ))');
+      expect(gitResult).toContainEqual(['git', 'reset', '--hard']);
+
+      const rmResult = splitShellCommands('echo $(( $(rm -rf /) + 1 ))');
+      expect(rmResult).toContainEqual(['rm', '-rf', '/']);
+    });
+
+    test('keeps adjacent nested command substitutions visible inside arithmetic expansion', () => {
+      const gitResult = splitShellCommands('echo $((foo+$(git reset --hard)))');
+      expect(gitResult).toContainEqual(['git', 'reset', '--hard']);
+
+      const rmResult = splitShellCommands('echo $((1+$(rm -rf /)))');
+      expect(rmResult).toContainEqual(['rm', '-rf', '/']);
+    });
+
+    test('does not treat quoted arithmetic expansion as command substitution', () => {
+      expect(splitShellCommands('echo "$(( rm -rf /x ))"')).toEqual([['echo', '$(( rm -rf /x ))']]);
+      expect(splitShellCommands('echo "$(( foo + bar ))"')).toEqual([['echo', '$(( foo + bar ))']]);
+    });
+
+    test('keeps backtick substitutions inside quoted redirect targets analyzable', () => {
+      expect(splitShellCommands('echo x >"`git reset --hard`"')).toEqual([
+        ['git', 'reset', '--hard'],
+        ['echo', 'x'],
+      ]);
+    });
+
+    test('keeps bare backtick redirect targets analyzable', () => {
+      expect(splitShellCommands('rm -rf /tmp/foo >`git reset --hard`')).toEqual([
+        ['git', 'reset', '--hard'],
+        ['rm', '-rf', '/tmp/foo'],
+      ]);
+      expect(splitShellCommands('echo $(rm -rf /tmp/foo >`git reset --hard`)')).toEqual([
+        ['echo'],
+        ['git', 'reset', '--hard'],
+        ['rm', '-rf', '/tmp/foo'],
       ]);
     });
 
