@@ -9,6 +9,22 @@ describe('analyzeGit direct', () => {
 });
 
 describe('git checkout', () => {
+  test('git checkout --force blocked', () => {
+    assertBlocked('git checkout --force main', 'git checkout --force');
+  });
+
+  test('git checkout -f blocked', () => {
+    assertBlocked('git checkout -f main', 'git checkout --force');
+  });
+
+  test('git checkout -qf blocked', () => {
+    assertBlocked('git checkout -qf main', 'git checkout --force');
+  });
+
+  test('git checkout force wins over branch creation', () => {
+    assertBlocked('git checkout -f -b new-branch', 'git checkout --force');
+  });
+
   test('git checkout -- blocked', () => {
     assertBlocked('git checkout -- file.txt', 'git checkout --');
   });
@@ -59,6 +75,10 @@ describe('git checkout', () => {
 
   test('git checkout - allowed', () => {
     assertAllowed('git checkout -');
+  });
+
+  test('git checkout -- -f blocked as path restore, not force', () => {
+    assertBlocked('git checkout -- -f', 'git checkout --');
   });
 
   test('git checkout --detach allowed', () => {

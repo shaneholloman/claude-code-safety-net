@@ -2,6 +2,8 @@ import { extractShortOpts, getBasename } from '@/core/shell';
 
 const REASON_CHECKOUT_DOUBLE_DASH =
   "git checkout -- discards uncommitted changes permanently. Use 'git stash' first.";
+const REASON_CHECKOUT_FORCE =
+  "git checkout --force discards uncommitted changes. Use 'git stash' first.";
 const REASON_CHECKOUT_REF_PATH =
   "git checkout <ref> -- <path> overwrites working tree with ref version. Use 'git stash' first.";
 const REASON_CHECKOUT_PATHSPEC_FROM_FILE =
@@ -52,6 +54,8 @@ const CHECKOUT_OPTS_WITH_VALUE = new Set([
 ]);
 
 const CHECKOUT_OPTS_WITH_OPTIONAL_VALUE = new Set(['--recurse-submodules', '--track', '-t']);
+const CHECKOUT_SHORT_OPTS_WITH_VALUE = new Set(['b', 'B', 'U']);
+const CHECKOUT_SHORT_OPTS_WITH_OPTIONAL_VALUE = new Set(['t']);
 
 const CHECKOUT_KNOWN_OPTS_NO_VALUE = new Set([
   '-q',
@@ -185,6 +189,10 @@ function extractGitSubcommandAndRest(tokens: readonly string[]): {
 function analyzeGitCheckout(tokens: readonly string[]): string | null {
   const { index: doubleDashIdx, before: beforeDash } = splitAtDoubleDash(tokens);
 
+  if (hasCheckoutForceFlag(beforeDash)) {
+    return REASON_CHECKOUT_FORCE;
+  }
+
   for (const token of tokens) {
     if (token === '-b' || token === '-B' || token === '--orphan') {
       return null;
@@ -212,6 +220,37 @@ function analyzeGitCheckout(tokens: readonly string[]): string | null {
   }
 
   return null;
+}
+
+function hasCheckoutForceFlag(tokens: readonly string[]): boolean {
+  for (const token of tokens) {
+    if (token === '--force') {
+      return true;
+    }
+
+    if (!token.startsWith('-') || token.startsWith('--') || token === '-') {
+      continue;
+    }
+
+    const chars = token.slice(1);
+    for (let i = 0; i < chars.length; i++) {
+      const char = chars[i];
+      if (!char || !/[a-zA-Z]/.test(char)) {
+        break;
+      }
+      if (CHECKOUT_SHORT_OPTS_WITH_VALUE.has(char)) {
+        break;
+      }
+      if (CHECKOUT_SHORT_OPTS_WITH_OPTIONAL_VALUE.has(char) && i < chars.length - 1) {
+        break;
+      }
+      if (char === 'f') {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 function analyzeGitSwitch(tokens: readonly string[]): string | null {

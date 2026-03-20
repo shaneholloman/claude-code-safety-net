@@ -1383,6 +1383,7 @@ function extractDashCArg(tokens) {
 
 // src/core/rules-git.ts
 var REASON_CHECKOUT_DOUBLE_DASH = "git checkout -- discards uncommitted changes permanently. Use 'git stash' first.";
+var REASON_CHECKOUT_FORCE = "git checkout --force discards uncommitted changes. Use 'git stash' first.";
 var REASON_CHECKOUT_REF_PATH = "git checkout <ref> -- <path> overwrites working tree with ref version. Use 'git stash' first.";
 var REASON_CHECKOUT_PATHSPEC_FROM_FILE = "git checkout --pathspec-from-file can overwrite multiple files. Use 'git stash' first.";
 var REASON_CHECKOUT_AMBIGUOUS = "git checkout with multiple positional args may overwrite files. Use 'git switch' for branches or 'git restore' for files.";
@@ -1417,6 +1418,8 @@ var CHECKOUT_OPTS_WITH_VALUE = new Set([
   "--unified"
 ]);
 var CHECKOUT_OPTS_WITH_OPTIONAL_VALUE = new Set(["--recurse-submodules", "--track", "-t"]);
+var CHECKOUT_SHORT_OPTS_WITH_VALUE = new Set(["b", "B", "U"]);
+var CHECKOUT_SHORT_OPTS_WITH_OPTIONAL_VALUE = new Set(["t"]);
 var CHECKOUT_KNOWN_OPTS_NO_VALUE = new Set([
   "-q",
   "--quiet",
@@ -1530,6 +1533,9 @@ function extractGitSubcommandAndRest(tokens) {
 }
 function analyzeGitCheckout(tokens) {
   const { index: doubleDashIdx, before: beforeDash } = splitAtDoubleDash(tokens);
+  if (hasCheckoutForceFlag(beforeDash)) {
+    return REASON_CHECKOUT_FORCE;
+  }
   for (const token of tokens) {
     if (token === "-b" || token === "-B" || token === "--orphan") {
       return null;
@@ -1553,6 +1559,33 @@ function analyzeGitCheckout(tokens) {
     return REASON_CHECKOUT_AMBIGUOUS;
   }
   return null;
+}
+function hasCheckoutForceFlag(tokens) {
+  for (const token of tokens) {
+    if (token === "--force") {
+      return true;
+    }
+    if (!token.startsWith("-") || token.startsWith("--") || token === "-") {
+      continue;
+    }
+    const chars = token.slice(1);
+    for (let i = 0;i < chars.length; i++) {
+      const char = chars[i];
+      if (!char || !/[a-zA-Z]/.test(char)) {
+        break;
+      }
+      if (CHECKOUT_SHORT_OPTS_WITH_VALUE.has(char)) {
+        break;
+      }
+      if (CHECKOUT_SHORT_OPTS_WITH_OPTIONAL_VALUE.has(char) && i < chars.length - 1) {
+        break;
+      }
+      if (char === "f") {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 function analyzeGitSwitch(tokens) {
   const { before } = splitAtDoubleDash(tokens);
