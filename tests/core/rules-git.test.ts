@@ -192,6 +192,44 @@ describe('git checkout', () => {
   });
 });
 
+describe('git switch', () => {
+  test('git switch --discard-changes blocked', () => {
+    assertBlocked('git switch --discard-changes main', 'git switch --discard-changes');
+  });
+
+  test('git switch --force blocked', () => {
+    assertBlocked('git switch --force main', 'git switch --force');
+  });
+
+  test('git switch -f blocked', () => {
+    assertBlocked('git switch -f main', 'git switch --force');
+  });
+
+  test('git switch -qf blocked', () => {
+    assertBlocked('git switch -qf main', 'git switch --force');
+  });
+
+  test('git -C repo switch -f blocked', () => {
+    assertBlocked('git -C repo switch -f main', 'git switch --force');
+  });
+
+  test('git switch main allowed', () => {
+    assertAllowed('git switch main');
+  });
+
+  test('git switch -c feature allowed', () => {
+    assertAllowed('git switch -c feature');
+  });
+
+  test('git switch --detach main allowed', () => {
+    assertAllowed('git switch --detach main');
+  });
+
+  test('git switch -- -f allowed', () => {
+    assertAllowed('git switch -- -f');
+  });
+});
+
 describe('git restore', () => {
   test('git restore file blocked', () => {
     assertBlocked('git restore file.txt', 'git restore');

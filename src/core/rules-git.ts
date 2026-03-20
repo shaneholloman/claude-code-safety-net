@@ -8,6 +8,10 @@ const REASON_CHECKOUT_PATHSPEC_FROM_FILE =
   "git checkout --pathspec-from-file can overwrite multiple files. Use 'git stash' first.";
 const REASON_CHECKOUT_AMBIGUOUS =
   "git checkout with multiple positional args may overwrite files. Use 'git switch' for branches or 'git restore' for files.";
+const REASON_SWITCH_DISCARD_CHANGES =
+  "git switch --discard-changes discards uncommitted changes. Use 'git stash' first.";
+const REASON_SWITCH_FORCE =
+  "git switch --force discards uncommitted changes. Use 'git stash' first.";
 const REASON_RESTORE =
   "git restore discards uncommitted changes. Use 'git stash' first, or use --staged to only unstage.";
 const REASON_RESTORE_WORKTREE =
@@ -111,6 +115,8 @@ export function analyzeGit(tokens: readonly string[]): string | null {
   switch (subcommand.toLowerCase()) {
     case 'checkout':
       return analyzeGitCheckout(rest);
+    case 'switch':
+      return analyzeGitSwitch(rest);
     case 'restore':
       return analyzeGitRestore(rest);
     case 'reset':
@@ -203,6 +209,21 @@ function analyzeGitCheckout(tokens: readonly string[]): string | null {
   const positionalArgs = getCheckoutPositionalArgs(tokens);
   if (positionalArgs.length >= 2) {
     return REASON_CHECKOUT_AMBIGUOUS;
+  }
+
+  return null;
+}
+
+function analyzeGitSwitch(tokens: readonly string[]): string | null {
+  const { before } = splitAtDoubleDash(tokens);
+
+  if (before.includes('--discard-changes')) {
+    return REASON_SWITCH_DISCARD_CHANGES;
+  }
+
+  const shortOpts = extractShortOpts([...before]);
+  if (before.includes('--force') || shortOpts.has('-f')) {
+    return REASON_SWITCH_FORCE;
   }
 
   return null;

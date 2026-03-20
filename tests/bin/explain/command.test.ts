@@ -24,6 +24,18 @@ describe('explainCommand', () => {
     expect(result.reason).toContain('git reset --hard');
   });
 
+  test('git switch --discard-changes returns blocked', () => {
+    const result = explainCommand('git switch --discard-changes main');
+    expect(result.result).toBe('blocked');
+    expect(result.reason).toContain('git switch --discard-changes');
+  });
+
+  test('git switch -f returns blocked', () => {
+    const result = explainCommand('git switch -f main');
+    expect(result.result).toBe('blocked');
+    expect(result.reason).toContain('git switch --force');
+  });
+
   test('sudo git reset --hard traces wrapper stripping', () => {
     const result = explainCommand('sudo git reset --hard');
     expect(result.result).toBe('blocked');
