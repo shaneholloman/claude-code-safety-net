@@ -7,6 +7,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { detectAllHooks, stripJsonComments } from '@/bin/doctor/hooks';
+import { withEnv } from '../../helpers.ts';
 
 function writeCopilotHook(
   filePath: string,
@@ -17,6 +18,33 @@ function writeCopilotHook(
     filePath,
     JSON.stringify({
       version: 1,
+      hooks: {
+        preToolUse: [
+          {
+            type: 'command',
+            [commandKey]: command,
+            cwd: '.',
+            timeoutSec: 15,
+          },
+        ],
+      },
+    }),
+  );
+}
+
+function writeCopilotInlineConfig(
+  filePath: string,
+  command: string = 'npx -y cc-safety-net --copilot-cli',
+  options: {
+    commandKey?: 'command' | 'bash' | 'powershell';
+    disableAllHooks?: boolean;
+  } = {},
+): void {
+  const { commandKey = 'command', disableAllHooks } = options;
+  writeFileSync(
+    filePath,
+    JSON.stringify({
+      ...(disableAllHooks !== undefined ? { disableAllHooks } : {}),
       hooks: {
         preToolUse: [
           {
@@ -423,17 +451,41 @@ describe('detectAllHooks', () => {
     writeCopilotHook(join(copilotDir, 'global.json'));
 
     try {
-      const hooks = detectAllHooks(projectDir, { homeDir });
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
       const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
 
       expect(copilot?.status).toBe('configured');
       expect(copilot?.configPath).toBe(join(copilotDir, 'global.json'));
+      expect(copilot?.configPaths).toEqual([join(copilotDir, 'global.json')]);
     } finally {
       rmSync(tmpBase, { recursive: true, force: true });
     }
   });
 
-  test('Copilot CLI: local project config takes precedence over global config', () => {
+  test('Copilot CLI: ignores global hook config on unsupported versions', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const copilotDir = join(homeDir, '.copilot', 'hooks');
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(copilotDir, { recursive: true });
+    writeCopilotHook(join(copilotDir, 'global.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '0.0.421' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('n/a');
+      expect(copilot?.selfTest).toBeUndefined();
+      expect(copilot?.errors?.some((e) => e.includes('does not support user hook files'))).toBe(
+        true,
+      );
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: reports repo and global hook configs together', () => {
     const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
     const homeDir = join(tmpBase, 'home');
     const projectDir = join(tmpBase, 'project');
@@ -445,11 +497,15 @@ describe('detectAllHooks', () => {
     writeCopilotHook(join(localDir, 'local.json'));
 
     try {
-      const hooks = detectAllHooks(projectDir, { homeDir });
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
       const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
 
       expect(copilot?.status).toBe('configured');
       expect(copilot?.configPath).toBe(join(localDir, 'local.json'));
+      expect(copilot?.configPaths).toEqual([
+        join(localDir, 'local.json'),
+        join(globalDir, 'global.json'),
+      ]);
     } finally {
       rmSync(tmpBase, { recursive: true, force: true });
     }
@@ -558,6 +614,235 @@ describe('detectAllHooks', () => {
 
       expect(copilot?.status).toBe('configured');
       expect(copilot?.configPath).toBe(join(copilotDir, 'short-flag.json'));
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: configured from global config.json inline hooks', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const configDir = join(homeDir, '.copilot');
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeCopilotInlineConfig(join(configDir, 'config.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(configDir, 'config.json'));
+      expect(copilot?.configPaths).toEqual([join(configDir, 'config.json')]);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: ignores global config.json inline hooks on unsupported versions', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const configDir = join(homeDir, '.copilot');
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeCopilotInlineConfig(join(configDir, 'config.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.7' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('n/a');
+      expect(
+        copilot?.errors?.some((e) => e.includes('does not support inline hook definitions')),
+      ).toBe(true);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: configured from repository settings.json inline hooks', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const configDir = join(projectDir, '.github', 'copilot');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeCopilotInlineConfig(join(configDir, 'settings.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(configDir, 'settings.json'));
+      expect(copilot?.configPaths).toEqual([join(configDir, 'settings.json')]);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: configured from repository settings.local.json inline hooks', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const configDir = join(projectDir, '.github', 'copilot');
+    mkdirSync(homeDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeCopilotInlineConfig(join(configDir, 'settings.local.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(configDir, 'settings.local.json'));
+      expect(copilot?.configPaths).toEqual([join(configDir, 'settings.local.json')]);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: user disableAllHooks reports disabled', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const hooksDir = join(projectDir, '.github', 'hooks');
+    const configDir = join(homeDir, '.copilot');
+    mkdirSync(hooksDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeCopilotHook(join(hooksDir, 'safety-net.json'));
+    writeFileSync(join(configDir, 'config.json'), JSON.stringify({ disableAllHooks: true }));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('disabled');
+      expect(copilot?.configPath).toBe(join(configDir, 'config.json'));
+      expect(copilot?.configPaths).toEqual([join(configDir, 'config.json')]);
+      expect(copilot?.selfTest).toBeUndefined();
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: repository settings can override user disableAllHooks', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const userConfigDir = join(homeDir, '.copilot');
+    const repoConfigDir = join(projectDir, '.github', 'copilot');
+    mkdirSync(userConfigDir, { recursive: true });
+    mkdirSync(repoConfigDir, { recursive: true });
+    writeFileSync(join(userConfigDir, 'config.json'), JSON.stringify({ disableAllHooks: true }));
+    writeFileSync(join(repoConfigDir, 'settings.json'), JSON.stringify({ disableAllHooks: false }));
+    writeCopilotInlineConfig(join(repoConfigDir, 'settings.local.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(repoConfigDir, 'settings.local.json'));
+      expect(copilot?.configPaths).toEqual([join(repoConfigDir, 'settings.local.json')]);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: settings.local disableAllHooks overrides broader configs', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const userConfigDir = join(homeDir, '.copilot');
+    const repoConfigDir = join(projectDir, '.github', 'copilot');
+    mkdirSync(userConfigDir, { recursive: true });
+    mkdirSync(repoConfigDir, { recursive: true });
+    writeCopilotInlineConfig(join(userConfigDir, 'config.json'));
+    writeCopilotInlineConfig(join(repoConfigDir, 'settings.json'));
+    writeFileSync(
+      join(repoConfigDir, 'settings.local.json'),
+      JSON.stringify({ disableAllHooks: true }),
+    );
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('disabled');
+      expect(copilot?.configPath).toBe(join(repoConfigDir, 'settings.local.json'));
+      expect(copilot?.configPaths).toEqual([join(repoConfigDir, 'settings.local.json')]);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: honors COPILOT_HOME for user config discovery', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const customCopilotHome = join(tmpBase, 'custom-copilot');
+    const projectDir = join(tmpBase, 'project');
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(customCopilotHome, { recursive: true });
+    writeCopilotInlineConfig(join(customCopilotHome, 'config.json'));
+
+    try {
+      const hooks = withEnv({ COPILOT_HOME: customCopilotHome }, () =>
+        detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' }),
+      );
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.configPath).toBe(join(customCopilotHome, 'config.json'));
+      expect(copilot?.configPaths).toEqual([join(customCopilotHome, 'config.json')]);
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: warns when version is unavailable for gated sources', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const configDir = join(homeDir, '.copilot');
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    writeCopilotInlineConfig(join(configDir, 'config.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('n/a');
+      expect(copilot?.errors?.some((e) => e.includes('Copilot CLI version unavailable'))).toBe(
+        true,
+      );
+    } finally {
+      rmSync(tmpBase, { recursive: true, force: true });
+    }
+  });
+
+  test('Copilot CLI: continues after inline config parse errors', () => {
+    const tmpBase = join(tmpdir(), `doctor-copilot-${Date.now()}`);
+    const homeDir = join(tmpBase, 'home');
+    const projectDir = join(tmpBase, 'project');
+    const configDir = join(homeDir, '.copilot');
+    const hooksDir = join(configDir, 'hooks');
+    mkdirSync(projectDir, { recursive: true });
+    mkdirSync(configDir, { recursive: true });
+    mkdirSync(hooksDir, { recursive: true });
+    writeFileSync(join(configDir, 'config.json'), '{ invalid json }');
+    writeCopilotHook(join(hooksDir, 'global.json'));
+
+    try {
+      const hooks = detectAllHooks(projectDir, { homeDir, copilotCliVersion: '1.0.9' });
+      const copilot = hooks.find((hook) => hook.platform === 'copilot-cli');
+
+      expect(copilot?.status).toBe('configured');
+      expect(copilot?.errors?.some((e) => e.includes('Failed to parse'))).toBe(true);
+      expect(copilot?.configPaths).toEqual([join(homeDir, '.copilot', 'hooks', 'global.json')]);
     } finally {
       rmSync(tmpBase, { recursive: true, force: true });
     }

@@ -99,13 +99,21 @@ function parseVersion(output: string | null): string | null {
 export async function getSystemInfo(
   fetcher: VersionFetcher = defaultVersionFetcher,
 ): Promise<SystemInfo> {
+  const fetchCopilotVersion = async (): Promise<string | null> => {
+    const binaryVersion = await fetcher(['copilot', '--binary-version']);
+    if (binaryVersion) {
+      return binaryVersion;
+    }
+    return fetcher(['copilot', '--version']);
+  };
+
   // Run all version fetches in parallel
   const [claudeRaw, openCodeRaw, geminiRaw, copilotRaw, nodeRaw, npmRaw, bunRaw] =
     await Promise.all([
       fetcher(['claude', '--version']),
       fetcher(['opencode', '--version']),
       fetcher(['gemini', '--version']),
-      fetcher(['copilot', '--version']),
+      fetchCopilotVersion(),
       fetcher(['node', '--version']),
       fetcher(['npm', '--version']),
       fetcher(['bun', '--version']),
