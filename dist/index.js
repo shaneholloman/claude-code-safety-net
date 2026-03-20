@@ -1060,7 +1060,7 @@ function stripCommand(tokens) {
   }
   return tokens.slice(i);
 }
-function extractShortOpts(tokens) {
+function extractShortOpts(tokens, options) {
   const opts = new Set;
   let pastDoubleDash = false;
   for (const token of tokens) {
@@ -1076,7 +1076,11 @@ function extractShortOpts(tokens) {
         if (!char || !/[a-zA-Z]/.test(char)) {
           break;
         }
-        opts.add(`-${char}`);
+        const shortOpt = `-${char}`;
+        opts.add(shortOpt);
+        if (options?.shortOptsWithValue?.has(shortOpt)) {
+          break;
+        }
       }
     }
   }
@@ -1420,6 +1424,7 @@ var CHECKOUT_OPTS_WITH_VALUE = new Set([
 var CHECKOUT_OPTS_WITH_OPTIONAL_VALUE = new Set(["--recurse-submodules", "--track", "-t"]);
 var CHECKOUT_SHORT_OPTS_WITH_VALUE = new Set(["b", "B", "U"]);
 var CHECKOUT_SHORT_OPTS_WITH_OPTIONAL_VALUE = new Set(["t"]);
+var SWITCH_SHORT_OPTS_WITH_VALUE = new Set(["-c", "-C"]);
 var CHECKOUT_KNOWN_OPTS_NO_VALUE = new Set([
   "-q",
   "--quiet",
@@ -1592,7 +1597,9 @@ function analyzeGitSwitch(tokens) {
   if (before.includes("--discard-changes")) {
     return REASON_SWITCH_DISCARD_CHANGES;
   }
-  const shortOpts = extractShortOpts([...before]);
+  const shortOpts = extractShortOpts([...before], {
+    shortOptsWithValue: SWITCH_SHORT_OPTS_WITH_VALUE
+  });
   if (before.includes("--force") || shortOpts.has("-f")) {
     return REASON_SWITCH_FORCE;
   }

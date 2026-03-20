@@ -241,6 +241,14 @@ describe('git switch', () => {
     assertAllowed('git switch -c feature');
   });
 
+  test('git switch -cfeature allowed', () => {
+    assertAllowed('git switch -cfeature');
+  });
+
+  test('git switch -Cfixup allowed', () => {
+    assertAllowed('git switch -Cfixup');
+  });
+
   test('git switch --detach main allowed', () => {
     assertAllowed('git switch --detach main');
   });

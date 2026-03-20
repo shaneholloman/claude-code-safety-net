@@ -790,7 +790,10 @@ function stripCommand(tokens: string[]): string[] {
   return tokens.slice(i);
 }
 
-export function extractShortOpts(tokens: string[]): Set<string> {
+export function extractShortOpts(
+  tokens: string[],
+  options?: { readonly shortOptsWithValue?: ReadonlySet<string> },
+): Set<string> {
   const opts = new Set<string>();
   let pastDoubleDash = false;
 
@@ -807,7 +810,11 @@ export function extractShortOpts(tokens: string[]): Set<string> {
         if (!char || !/[a-zA-Z]/.test(char)) {
           break;
         }
-        opts.add(`-${char}`);
+        const shortOpt = `-${char}`;
+        opts.add(shortOpt);
+        if (options?.shortOptsWithValue?.has(shortOpt)) {
+          break;
+        }
       }
     }
   }
