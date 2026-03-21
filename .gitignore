@@ -8,6 +8,7 @@ plan-*.md
 .sisyphus/
 .opencode
 .gemini
+.codex
 
 # --- Node.js ---
 node_modules/
