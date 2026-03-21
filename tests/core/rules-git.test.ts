@@ -9,6 +9,26 @@ describe('analyzeGit direct', () => {
 });
 
 describe('git checkout', () => {
+  test('git checkout --force blocked', () => {
+    assertBlocked('git checkout --force main', 'git checkout --force');
+  });
+
+  test('git checkout -f blocked', () => {
+    assertBlocked('git checkout -f main', 'git checkout --force');
+  });
+
+  test('git checkout -qf blocked', () => {
+    assertBlocked('git checkout -qf main', 'git checkout --force');
+  });
+
+  test('git checkout -tf blocked', () => {
+    assertBlocked('git checkout -tf main', 'git checkout --force');
+  });
+
+  test('git checkout force wins over branch creation', () => {
+    assertBlocked('git checkout -f -b new-branch', 'git checkout --force');
+  });
+
   test('git checkout -- blocked', () => {
     assertBlocked('git checkout -- file.txt', 'git checkout --');
   });
@@ -37,8 +57,16 @@ describe('git checkout', () => {
     assertAllowed('git checkout -bnew-branch');
   });
 
+  test('git checkout -bfeature allowed', () => {
+    assertAllowed('git checkout -bfeature');
+  });
+
   test('git checkout -Bnew-branch allowed', () => {
     assertAllowed('git checkout -Bnew-branch');
+  });
+
+  test('git checkout -qbfeature allowed', () => {
+    assertAllowed('git checkout -qbfeature');
   });
 
   test('git checkout ref pathspec blocked', () => {
@@ -59,6 +87,10 @@ describe('git checkout', () => {
 
   test('git checkout - allowed', () => {
     assertAllowed('git checkout -');
+  });
+
+  test('git checkout -- -f blocked as path restore, not force', () => {
+    assertBlocked('git checkout -- -f', 'git checkout --');
   });
 
   test('git checkout --detach allowed', () => {
@@ -189,6 +221,52 @@ describe('git checkout', () => {
 
   test('git checkout unknown long option equals allowed', () => {
     assertAllowed('git checkout --unknown=value main');
+  });
+});
+
+describe('git switch', () => {
+  test('git switch --discard-changes blocked', () => {
+    assertBlocked('git switch --discard-changes main', 'git switch --discard-changes');
+  });
+
+  test('git switch --force blocked', () => {
+    assertBlocked('git switch --force main', 'git switch --force');
+  });
+
+  test('git switch -f blocked', () => {
+    assertBlocked('git switch -f main', 'git switch --force');
+  });
+
+  test('git switch -qf blocked', () => {
+    assertBlocked('git switch -qf main', 'git switch --force');
+  });
+
+  test('git -C repo switch -f blocked', () => {
+    assertBlocked('git -C repo switch -f main', 'git switch --force');
+  });
+
+  test('git switch main allowed', () => {
+    assertAllowed('git switch main');
+  });
+
+  test('git switch -c feature allowed', () => {
+    assertAllowed('git switch -c feature');
+  });
+
+  test('git switch -cfeature allowed', () => {
+    assertAllowed('git switch -cfeature');
+  });
+
+  test('git switch -Cfixup allowed', () => {
+    assertAllowed('git switch -Cfixup');
+  });
+
+  test('git switch --detach main allowed', () => {
+    assertAllowed('git switch --detach main');
+  });
+
+  test('git switch -- -f allowed', () => {
+    assertAllowed('git switch -- -f');
   });
 });
 

@@ -82,6 +82,30 @@ describe('shell parsing helpers', () => {
         new Set(['-v', '-n']),
       );
     });
+
+    test('stops after short options with attached values when configured', () => {
+      expect(
+        extractShortOpts(['git', 'switch', '-cfeature'], {
+          shortOptsWithValue: new Set(['-c', '-C']),
+        }),
+      ).toEqual(new Set(['-c']));
+      expect(
+        extractShortOpts(['git', 'switch', '-qcfeature'], {
+          shortOptsWithValue: new Set(['-c', '-C']),
+        }),
+      ).toEqual(new Set(['-q', '-c']));
+      expect(
+        extractShortOpts(['git', 'switch', '-Cfixup'], {
+          shortOptsWithValue: new Set(['-c', '-C']),
+        }),
+      ).toEqual(new Set(['-C']));
+    });
+
+    test('accepts readonly token arrays', () => {
+      const tokens: readonly string[] = ['git', '-v', 'switch', '-f'];
+
+      expect(extractShortOpts(tokens)).toEqual(new Set(['-v', '-f']));
+    });
   });
 
   describe('splitShellCommands', () => {

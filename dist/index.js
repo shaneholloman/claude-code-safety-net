@@ -1060,7 +1060,7 @@ function stripCommand(tokens) {
   }
   return tokens.slice(i);
 }
-function extractShortOpts(tokens) {
+function extractShortOpts(tokens, options) {
   const opts = new Set;
   let pastDoubleDash = false;
   for (const token of tokens) {
@@ -1076,7 +1076,11 @@ function extractShortOpts(tokens) {
         if (!char || !/[a-zA-Z]/.test(char)) {
           break;
         }
-        opts.add(`-${char}`);
+        const shortOpt = `-${char}`;
+        opts.add(shortOpt);
+        if (options?.shortOptsWithValue?.has(shortOpt)) {
+          break;
+        }
       }
     }
   }
@@ -1383,9 +1387,12 @@ function extractDashCArg(tokens) {
 
 // src/core/rules-git.ts
 var REASON_CHECKOUT_DOUBLE_DASH = "git checkout -- discards uncommitted changes permanently. Use 'git stash' first.";
+var REASON_CHECKOUT_FORCE = "git checkout --force discards uncommitted changes. Use 'git stash' first.";
 var REASON_CHECKOUT_REF_PATH = "git checkout <ref> -- <path> overwrites working tree with ref version. Use 'git stash' first.";
 var REASON_CHECKOUT_PATHSPEC_FROM_FILE = "git checkout --pathspec-from-file can overwrite multiple files. Use 'git stash' first.";
 var REASON_CHECKOUT_AMBIGUOUS = "git checkout with multiple positional args may overwrite files. Use 'git switch' for branches or 'git restore' for files.";
+var REASON_SWITCH_DISCARD_CHANGES = "git switch --discard-changes discards uncommitted changes. Use 'git stash' first.";
+var REASON_SWITCH_FORCE = "git switch --force discards uncommitted changes. Use 'git stash' first.";
 var REASON_RESTORE = "git restore discards uncommitted changes. Use 'git stash' first, or use --staged to only unstage.";
 var REASON_RESTORE_WORKTREE = "git restore --worktree explicitly discards working tree changes. Use 'git stash' first.";
 var REASON_RESET_HARD = "git reset --hard destroys all uncommitted changes permanently. Use 'git stash' first.";
@@ -1415,6 +1422,8 @@ var CHECKOUT_OPTS_WITH_VALUE = new Set([
   "--unified"
 ]);
 var CHECKOUT_OPTS_WITH_OPTIONAL_VALUE = new Set(["--recurse-submodules", "--track", "-t"]);
+var CHECKOUT_SHORT_OPTS_WITH_VALUE = new Set(["-b", "-B", "-U"]);
+var SWITCH_SHORT_OPTS_WITH_VALUE = new Set(["-c", "-C"]);
 var CHECKOUT_KNOWN_OPTS_NO_VALUE = new Set([
   "-q",
   "--quiet",
@@ -1469,6 +1478,8 @@ function analyzeGit(tokens) {
   switch (subcommand.toLowerCase()) {
     case "checkout":
       return analyzeGitCheckout(rest);
+    case "switch":
+      return analyzeGitSwitch(rest);
     case "restore":
       return analyzeGitRestore(rest);
     case "reset":
@@ -1526,6 +1537,12 @@ function extractGitSubcommandAndRest(tokens) {
 }
 function analyzeGitCheckout(tokens) {
   const { index: doubleDashIdx, before: beforeDash } = splitAtDoubleDash(tokens);
+  const shortOpts = extractShortOpts(beforeDash, {
+    shortOptsWithValue: CHECKOUT_SHORT_OPTS_WITH_VALUE
+  });
+  if (beforeDash.includes("--force") || shortOpts.has("-f")) {
+    return REASON_CHECKOUT_FORCE;
+  }
   for (const token of tokens) {
     if (token === "-b" || token === "-B" || token === "--orphan") {
       return null;
@@ -1547,6 +1564,19 @@ function analyzeGitCheckout(tokens) {
   const positionalArgs = getCheckoutPositionalArgs(tokens);
   if (positionalArgs.length >= 2) {
     return REASON_CHECKOUT_AMBIGUOUS;
+  }
+  return null;
+}
+function analyzeGitSwitch(tokens) {
+  const { before } = splitAtDoubleDash(tokens);
+  if (before.includes("--discard-changes")) {
+    return REASON_SWITCH_DISCARD_CHANGES;
+  }
+  const shortOpts = extractShortOpts(before, {
+    shortOptsWithValue: SWITCH_SHORT_OPTS_WITH_VALUE
+  });
+  if (before.includes("--force") || shortOpts.has("-f")) {
+    return REASON_SWITCH_FORCE;
   }
   return null;
 }

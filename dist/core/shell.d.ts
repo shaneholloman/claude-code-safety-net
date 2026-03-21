@@ -10,6 +10,8 @@ export interface WrapperStrippingResult {
 }
 export declare function stripWrappers(tokens: string[]): string[];
 export declare function stripWrappersWithInfo(tokens: string[]): WrapperStrippingResult;
-export declare function extractShortOpts(tokens: string[]): Set<string>;
+export declare function extractShortOpts(tokens: readonly string[], options?: {
+    readonly shortOptsWithValue?: ReadonlySet<string>;
+}): Set<string>;
 export declare function normalizeCommandToken(token: string): string;
 export declare function getBasename(token: string): string;
