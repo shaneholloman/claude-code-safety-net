@@ -4180,11 +4180,12 @@ function detectAllHooks(cwd, options) {
     }
     if (options?.copilotPluginInstalled === true || hooksCheck.activeConfigPaths.length > 0) {
       const viaPlugin = options?.copilotPluginInstalled === true;
+      const primaryConfigPath = hooksCheck.activeConfigPaths[0];
       return {
         platform: "copilot-cli",
         status: "configured",
         method: viaPlugin ? "plugin list" : "hook config",
-        configPath: viaPlugin ? undefined : hooksCheck.activeConfigPaths[0],
+        configPath: primaryConfigPath,
         configPaths: hooksCheck.activeConfigPaths.length > 0 ? hooksCheck.activeConfigPaths : undefined,
         selfTest: runSelfTest(),
         errors: errors.length > 0 ? errors : undefined
