@@ -454,7 +454,8 @@ describe('detectAllHooks', () => {
 
       expect(copilot?.status).toBe('configured');
       expect(copilot?.method).toBe('plugin list');
-      expect(copilot?.configPath).toBeUndefined();
+      expect(copilot?.configPath).toBe('copilot-plugin');
+      expect(copilot?.configPaths).toBeUndefined();
       expect(copilot?.selfTest?.failed).toBe(0);
     } finally {
       rmSync(tmpBase, { recursive: true, force: true });

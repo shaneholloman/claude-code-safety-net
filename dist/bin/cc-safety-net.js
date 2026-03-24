@@ -3731,6 +3731,7 @@ function analyzeCommand(command, options = {}) {
 }
 
 // src/bin/doctor/hooks.ts
+var COPILOT_PLUGIN_CONFIG_PATH = "copilot-plugin";
 var SELF_TEST_CASES = [
   { command: "git reset --hard", description: "git reset --hard", expectBlocked: true },
   { command: "rm -rf /", description: "rm -rf /", expectBlocked: true },
@@ -4185,7 +4186,7 @@ function detectAllHooks(cwd, options) {
         platform: "copilot-cli",
         status: "configured",
         method: viaPlugin ? "plugin list" : "hook config",
-        configPath: primaryConfigPath,
+        configPath: primaryConfigPath ?? (viaPlugin ? COPILOT_PLUGIN_CONFIG_PATH : undefined),
         configPaths: hooksCheck.activeConfigPaths.length > 0 ? hooksCheck.activeConfigPaths : undefined,
         selfTest: runSelfTest(),
         errors: errors.length > 0 ? errors : undefined

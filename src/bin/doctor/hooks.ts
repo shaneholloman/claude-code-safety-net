@@ -40,6 +40,8 @@ interface CopilotDetectionState {
   disabledBy?: string;
 }
 
+const COPILOT_PLUGIN_CONFIG_PATH = 'copilot-plugin';
+
 /** Self-test cases for validating the analyzer */
 const SELF_TEST_CASES: SelfTestCase[] = [
   // Git destructive commands
@@ -692,7 +694,7 @@ export function detectAllHooks(cwd: string, options?: HookDetectOptions): HookSt
         platform: 'copilot-cli',
         status: 'configured',
         method: viaPlugin ? 'plugin list' : 'hook config',
-        configPath: primaryConfigPath,
+        configPath: primaryConfigPath ?? (viaPlugin ? COPILOT_PLUGIN_CONFIG_PATH : undefined),
         configPaths:
           hooksCheck.activeConfigPaths.length > 0 ? hooksCheck.activeConfigPaths : undefined,
         selfTest: runSelfTest(),
